@@ -6,9 +6,20 @@ Updated: 7 Sep 2026
 
 Build a portrait, Android-first trade-counter kiosk for the TouchWo GD238C. Customers authenticate primarily by tapping an NFC card. If the card is unknown, the kiosk asks for the customer's existing Magento email/password once, verifies the account, and links the NFC credential for future taps.
 
+## Non-negotiable Magento boundary
+
+All kiosk customer authentication/session traffic to Magento is **GraphQL only**.
+
+- first-time login: `generateCustomerToken`
+- returning-card exchange: `css_kiosk_customer_session`
+- fresh customer/company context: `customer` + `css_company_context`
+- logout/token revocation: `revokeCustomerToken`
+
+The deployed Commerce-side implementation belongs only to `0stoya/Fluid/Css/Commerce`. Do not introduce a kiosk-specific Magento REST endpoint or depend on any other Magento repository.
+
 ## K0 — device and authentication foundation
 
-Status: in progress
+Status: accepted; final hardening items remain
 
 - [x] standalone `css_kiosk` repository
 - [x] Next.js / React / TypeScript baseline aligned with CSS Admin runtime versions
@@ -20,25 +31,59 @@ Status: in progress
 - [x] deterministic hardware fixtures: ready / unavailable / registered / unknown / revoked / read error
 - [x] deterministic Magento-auth fixtures: success / invalid credentials / unavailable
 - [x] passive NFC target: card reads arrive as external reader events, not screen taps
-- [x] unknown-card email/password linking journey prototype
+- [x] unknown-card email/password linking journey
 - [x] explicit account-link confirmation before assigning the card
 - [x] signed-in welcome and sign-out reset
 - [x] simulator documented in `docs/SIMULATOR.md`
-- [x] real Magento customer-token + authenticated customer/company lookup implemented server-side
+- [x] real Magento customer authentication via GraphQL `generateCustomerToken`
+- [x] real authenticated customer/company lookup via GraphQL
 - [x] real Magento customer authentication accepted against the live environment
-- [x] server-side hashed NFC credential persistence + five-minute pending card-link proof implemented
-- [ ] accept a real Magento account link against the persistent simulated card and confirm it survives restart
-- [x] define signed kiosk device registration/trust model using ECDSA P-256 public keys
+- [x] server-side hashed NFC credential persistence + five-minute pending card-link proof
+- [x] real Magento account linked to the persistent simulated card and confirmed durable across kiosk process restarts
+- [x] signed kiosk device registration/trust model using ECDSA P-256 public keys
 - [x] development simulator exercises signed device requests and nonce replay protection
 - [x] signed device trust accepted against the simulator fail-closed check
-- [x] define trusted kiosk-to-Magento authenticated session exchange for subsequent card taps
-- [x] implement server-side RS256 assertion + Magento exchange client + opaque 15-minute kiosk session
-- [ ] accept the authenticated returning-card session against live Magento
+- [x] trusted kiosk-to-Magento authenticated session exchange defined and implemented
+- [x] server-side one-use RS256 assertion + CSS Commerce GraphQL exchange
+- [x] opaque 15-minute kiosk session with Magento token kept in server memory only
+- [x] fresh customer/company authorization after every returning-card exchange
+- [x] live returning-card session accepted against Magento
+- [x] Magento 2.4.9 opaque `customer.id` handled correctly by using numeric `css_company_context.customer_id`
+- [x] legacy development card snapshots normalized to numeric Magento customer IDs on read
+- [ ] complete sign-out/re-auth runtime regression after the final ID normalization patch
 - [ ] implement inactivity session reset
 - [ ] implement offline / degraded-network state
 - [ ] inspect TouchWo GD238C Android version, SoC, NFC hardware/API and browser/WebView capabilities
 
-### K0 acceptance
+### Live K0 acceptance — 7 Sep 2026
+
+Observed returning-card result:
+
+```text
+Welcome, Chris
+Your trade account has been recognised.
+
+Greener Ealing Ltd
+chris@ostoya.io
+Account EAL001
+```
+
+Accepted trust chain:
+
+```text
+linked NFC fixture
+→ signed trusted device request
+→ persisted hashed credential lookup
+→ numeric Magento customer ID
+→ one-use RS256 customer_session assertion
+→ GraphQL css_kiosk_customer_session
+→ Magento customer token, server-side only
+→ GraphQL customer + css_company_context refresh
+→ opaque HttpOnly css_kiosk_session
+→ Welcome
+```
+
+### K0 acceptance rules
 
 - Runs at portrait 1080 x 1920 without horizontal scrolling.
 - All customer actions are comfortably touchable.
@@ -46,6 +91,7 @@ Status: in progress
 - Reader unavailable, card read error, invalid Magento credentials and Magento service outage all fail closed in the simulator.
 - Prototype controls are unavailable in a production build.
 - Production cannot create a fake NFC read or accept simulated Magento authentication.
+- Magento integration is GraphQL-only.
 - Real Magento verification returns only safe customer/company data to the browser; the customer token is not returned or persisted client-side.
 - Raw NFC credentials are not stored; only a SHA-256 credential hash is persisted server-side.
 - Pending card links are short-lived, HttpOnly-bound and require explicit confirmation.
@@ -54,20 +100,29 @@ Status: in progress
 - Device request signatures cover method, path, timestamp, nonce and exact body hash; nonces are single-use.
 - Production stores only the device public key; the future Android private key stays in Android Keystore.
 - Returning linked cards require a fresh one-use server assertion before Magento issues a customer token.
+- CSS Commerce accepts only numeric Magento customer IDs in the signed assertion `sub`.
 - Magento token remains server-side; the browser receives only an opaque HttpOnly kiosk session ID and safe customer/session metadata.
 - A fresh Magento customer/company lookup must still match the linked NFC context before the kiosk session is created.
 - Replacing/signing out a kiosk session destroys the in-memory session and revokes its Magento token best-effort.
 - No password, Magento token or reusable customer credential is persisted client-side.
 
-## K1 — authenticated customer home
+## K1 — authenticated customer home and catalogue entry
 
-- customer/company context
-- company branding/context where appropriate
-- trade catalogue entry
-- search
-- category navigation
-- favourites / common purchases foundation
-- clear signed-in identity and sign-out
+Status: next slice
+
+The existing `css_kiosk_session` is already authenticated. K1 makes `Continue` use it for customer-facing commerce rather than creating a second browser authentication mechanism.
+
+- [ ] `Continue` enters authenticated customer home/catalogue
+- [ ] server resolves `css_kiosk_session` and uses its server-held Magento customer token
+- [ ] no Magento bearer token in browser responses, localStorage, sessionStorage or client JavaScript
+- [ ] customer/company identity remains visible throughout the catalogue journey
+- [ ] company branding/context where appropriate
+- [ ] trade catalogue entry
+- [ ] search
+- [ ] category navigation
+- [ ] favourites / common purchases foundation
+- [ ] clear signed-in identity and sign-out everywhere
+- [ ] expired/missing kiosk session returns safely to NFC authentication
 
 ## K2 — catalogue and basket
 
@@ -117,3 +172,5 @@ Exact scope to be agreed after Magento order and counter workflows are inspected
 9. Production NFC trust decisions belong to the server, not browser state.
 10. Production kiosk devices use asymmetric signing; only the public key is stored server-side.
 11. Magento customer tokens stay server-side and are never returned to kiosk browser JavaScript.
+12. Magento customer authentication/session transport is GraphQL only.
+13. The RSA private assertion key stays outside source control and outside Magento; Magento stores only the public key.

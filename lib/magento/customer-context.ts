@@ -27,7 +27,6 @@ type GraphQLResponse<TData> = {
 
 type CustomerContextData = {
   customer: {
-    id: number;
     firstname: string;
     lastname: string;
     email: string;
@@ -50,7 +49,6 @@ type CustomerContextData = {
 const CUSTOMER_CONTEXT_QUERY = /* GraphQL */ `
   query KioskCustomerContext {
     customer {
-      id
       firstname
       lastname
       email
@@ -113,7 +111,15 @@ export async function getVerifiedKioskCustomer(token: string): Promise<VerifiedK
     );
   }
 
-  if (body.errors?.length || !body.data?.customer || !body.data.css_company_context?.authenticated) {
+  const customerId = body.data?.css_company_context?.customer_id;
+  if (
+    body.errors?.length ||
+    !body.data?.customer ||
+    !body.data.css_company_context?.authenticated ||
+    typeof customerId !== "number" ||
+    !Number.isInteger(customerId) ||
+    customerId <= 0
+  ) {
     throw new MagentoCustomerAuthError(
       "The customer account service could not confirm this account.",
       "INVALID_RESPONSE",
@@ -138,7 +144,7 @@ export async function getVerifiedKioskCustomer(token: string): Promise<VerifiedK
     null;
 
   return {
-    customerId: body.data.customer.id,
+    customerId,
     firstName: body.data.customer.firstname,
     lastName: body.data.customer.lastname,
     email: body.data.customer.email,

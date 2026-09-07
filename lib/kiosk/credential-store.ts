@@ -24,14 +24,14 @@ export class NfcCredentialStoreError extends Error {
 
 type StoredCredentialRow = {
   status: string;
-  customer_id: number;
+  customer_id: unknown;
   customer_json: string;
 };
 
 type PendingLinkRow = {
   credential_hash: string;
   credential_type: NfcCredentialType;
-  customer_id: number;
+  customer_id: unknown;
   customer_json: string;
   expires_at: string;
 };
@@ -122,10 +122,59 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeCustomerId(value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^[1-9]\d*$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
+
+    if (/^[A-Za-z0-9+/_-]+={0,2}$/.test(trimmed)) {
+      try {
+        const decoded = Buffer.from(trimmed, "base64").toString("utf8").trim();
+        if (/^[1-9]\d*$/.test(decoded)) {
+          const parsed = Number(decoded);
+          if (Number.isSafeInteger(parsed)) return parsed;
+        }
+      } catch {
+        // Fall through to the store error below.
+      }
+    }
+  }
+
+  throw new NfcCredentialStoreError(
+    "Stored kiosk customer data is invalid.",
+    "STORE_UNAVAILABLE",
+    503,
+  );
+}
+
+function normalizeCustomer(value: unknown): VerifiedKioskCustomer {
+  if (!value || typeof value !== "object") {
+    throw new NfcCredentialStoreError(
+      "Stored kiosk customer data is invalid.",
+      "STORE_UNAVAILABLE",
+      503,
+    );
+  }
+
+  const customer = value as VerifiedKioskCustomer & { customerId: unknown };
+  return {
+    ...customer,
+    customerId: normalizeCustomerId(customer.customerId),
+  };
+}
+
 function customerFromJson(value: string) {
   try {
-    return JSON.parse(value) as VerifiedKioskCustomer;
-  } catch {
+    return normalizeCustomer(JSON.parse(value));
+  } catch (error) {
+    if (error instanceof NfcCredentialStoreError) throw error;
     throw new NfcCredentialStoreError(
       "Stored kiosk customer data is invalid.",
       "STORE_UNAVAILABLE",
@@ -171,12 +220,17 @@ export function resolveNfcCredential(credential: NfcCredential): NfcCredentialRe
     );
   }
 
-  db.prepare("UPDATE nfc_credentials SET last_used_at = ?, updated_at = ? WHERE credential_hash = ?")
-    .run(nowIso(), nowIso(), hash);
+  const customer = customerFromJson(row.customer_json);
+  const timestamp = nowIso();
+  db.prepare(`
+    UPDATE nfc_credentials
+    SET customer_id = ?, customer_json = ?, last_used_at = ?, updated_at = ?
+    WHERE credential_hash = ?
+  `).run(customer.customerId, JSON.stringify(customer), timestamp, timestamp, hash);
 
   return {
     status: "registered",
-    customer: customerFromJson(row.customer_json),
+    customer,
   };
 }
 
@@ -185,6 +239,7 @@ export function createPendingNfcLink(
   customer: VerifiedKioskCustomer,
 ) {
   const db = getDatabase();
+  const normalizedCustomer = normalizeCustomer(customer);
   const hash = credentialHash(credential);
   const existing = db
     .prepare("SELECT status, customer_id, customer_json FROM nfc_credentials WHERE credential_hash = ?")
@@ -227,8 +282,8 @@ export function createPendingNfcLink(
     proofHash(proof),
     hash,
     credential.type,
-    customer.customerId,
-    JSON.stringify(customer),
+    normalizedCustomer.customerId,
+    JSON.stringify(normalizedCustomer),
     createdAt.toISOString(),
     expiresAt.toISOString(),
   );
@@ -274,9 +329,10 @@ export function confirmPendingNfcLink(proof: string): VerifiedKioskCustomer {
   }
 
   if (existing) {
-    if (existing.status === "active" && existing.customer_id === pending.customer_id) {
+    const existingCustomer = customerFromJson(existing.customer_json);
+    if (existing.status === "active" && existingCustomer.customerId === customer.customerId) {
       db.prepare("DELETE FROM pending_nfc_links WHERE proof_hash = ?").run(hashedProof);
-      return customerFromJson(existing.customer_json);
+      return existingCustomer;
     }
 
     throw new NfcCredentialStoreError(
@@ -292,7 +348,7 @@ export function confirmPendingNfcLink(proof: string): VerifiedKioskCustomer {
   try {
     const raceCheck = db
       .prepare("SELECT status, customer_id FROM nfc_credentials WHERE credential_hash = ?")
-      .get(pending.credential_hash) as { status: string; customer_id: number } | undefined;
+      .get(pending.credential_hash) as { status: string; customer_id: unknown } | undefined;
 
     if (raceCheck) {
       throw new NfcCredentialStoreError(
@@ -317,8 +373,8 @@ export function confirmPendingNfcLink(proof: string): VerifiedKioskCustomer {
     `).run(
       pending.credential_hash,
       pending.credential_type,
-      pending.customer_id,
-      pending.customer_json,
+      customer.customerId,
+      JSON.stringify(customer),
       timestamp,
       timestamp,
       timestamp,
