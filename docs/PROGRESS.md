@@ -2,245 +2,142 @@
 
 Updated: 7 Sep 2026
 
-This document records the accepted state of `css_kiosk` and the current implementation slice so work can continue without re-discovering security, transport or deployment boundaries.
+This document records the accepted state of `css_kiosk` and the active implementation slice so work can continue without re-discovering security, transport or deployment boundaries.
 
-## Current architecture
+## Non-negotiable Magento boundary
 
-```text
-TouchWo / simulator NFC event
-        ↓
-NfcReader abstraction
-        ↓
-signed kiosk-device request (ECDSA P-256)
-        ↓
-server resolves SHA-256 NFC credential hash
-        ↓
-known card?
-  ├─ no → Magento GraphQL generateCustomerToken
-  │       → fresh customer + css_company_context
-  │       → explicit card-link confirmation
-  │       → durable hashed NFC mapping
-  │
-  └─ yes → one-use RS256 customer_session assertion
-          → CSS Commerce GraphQL css_kiosk_customer_session
-          → Magento customer token, server memory only
-          → fresh customer + css_company_context
-          → opaque HttpOnly css_kiosk_session
-          → Welcome
-          → Continue
-          → signed /api/catalogue request + css_kiosk_session
-          → server-held Magento token
-          → Magento GraphQL categoryList + products
-          → safe catalogue data only
-```
-
-## Magento boundary
-
-The kiosk/Magento integration is **GraphQL only**.
+The kiosk/Magento integration is **HTTPS GraphQL only**.
 
 ```text
 First-time auth         generateCustomerToken
 Returning-card session  css_kiosk_customer_session
 Identity/company        customer + css_company_context
 Catalogue/categories    products + categoryList
+Customer basket         customerCart + cart mutations
 Logout/revocation       revokeCustomerToken
 ```
 
-The deployed Magento-side customization boundary is:
+The deployed custom Magento-side boundary is only:
 
 ```text
 0stoya/Fluid/Css/Commerce
 ```
 
-No kiosk-specific REST endpoint is part of the architecture. No Magento Admin/integration credential belongs in `css_kiosk`.
+No kiosk-specific REST endpoint is part of the architecture. RSA/ECDSA signatures authenticate trust boundaries; GraphQL remains the Magento transport.
 
-RSA and ECDSA are trust/authentication mechanisms; HTTPS GraphQL remains the Magento transport.
-
-## Completed milestones
-
-### Foundation
-
-- standalone Next.js/React/TypeScript kiosk repository
-- portrait 1080 x 1920 touch-first shell
-- CSS branding/logo
-- NFC auth-state model
-- Android/native-facing `NfcReader` interface
-
-### Hardware-independent simulation
-
-- deterministic NFC simulator
-- registered / unknown / revoked / reader unavailable / read-error scenarios
-- deterministic device trust simulation
-- development-only controls excluded from production behavior
-
-### First-time customer linking
-
-- real Magento email/password authentication through GraphQL `generateCustomerToken`
-- current customer/company resolution
-- explicit confirmation before card assignment
-- password never persisted
-- SHA-256 NFC credential persistence
-- five-minute pending link proof
-- multiple-card-per-customer-compatible data model
-
-### Kiosk device trust
-
-- ECDSA P-256 signed requests
-- device ID, timestamp and nonce headers
-- canonical method/path/body-hash signature
-- 90-second request freshness
-- nonce replay protection
-- unknown/revoked/invalid devices fail closed
-- production private key intended for Android Keystore
-
-### Returning-card Magento session
-
-- kiosk-side RS256 assertion signing
-- 60-second assertion lifetime
-- `iss=css-kiosk`
-- `aud=css-commerce`
-- `kid=css-kiosk-v1`
-- numeric Magento customer ID in `sub`
-- trusted kiosk device ID in `device_id`
-- random single-use `jti`
-- CSS Commerce assertion verification + replay table
-- Magento customer token issued server-side only
-- current customer/company re-read after token issuance
-- 15-minute opaque kiosk session
-- HttpOnly + SameSite=Strict browser cookie
-- server restart intentionally destroys active sessions while durable NFC links survive
-- sign-out/replacement revokes Magento token best-effort
-
-## Magento 2.4.9 customer ID compatibility
-
-During live acceptance Magento returned:
+## Accepted trust/session architecture
 
 ```text
-customer.id = Ng==
+NFC event
+  -> NfcReader
+  -> signed kiosk-device request (ECDSA P-256)
+  -> SHA-256 NFC credential lookup
+  -> known card
+  -> one-use RS256 customer_session assertion
+  -> Css/Commerce GraphQL css_kiosk_customer_session
+  -> Magento customer token, server memory only
+  -> fresh customer + css_company_context
+  -> opaque HttpOnly css_kiosk_session
+  -> authenticated kiosk UI
 ```
 
-The standard `customer.id` is an opaque GraphQL ID, not the numeric entity ID required by the CSS Commerce assertion contract.
+Unknown cards use Magento GraphQL `generateCustomerToken` once, then explicit card-link confirmation. Passwords are never persisted. Raw NFC credentials are never stored.
 
-The accepted fix is to use:
+## K0 — authentication foundation — accepted
 
-```text
-css_company_context.customer_id
-```
-
-for `VerifiedKioskCustomer.customerId`, durable card linkage and assertion `sub`.
-
-Legacy development snapshots containing the opaque ID are normalized/repaired on read.
-
-## Live K0 acceptance evidence
-
-Accepted on 7 Sep 2026 against live Magento and the deployed `Fluid/Css/Commerce` contract.
-
-### Trust/config checks
-
-```text
-RSA private key: valid standard RSA
-Magento GraphQL: reachable
-Magento kiosk exchange: enabled
-issuer: css-kiosk
-audience: css-commerce
-key id: css-kiosk-v1
-max ttl: 60
-clock skew: 15
-public key fingerprint: matched kiosk key pair
-Magento KioskAssertionVerifier: accepted fresh assertion
-```
-
-### End-to-end returning-card result
+Live returning-card acceptance on 7 Sep 2026:
 
 ```text
 Welcome, Chris
-Your trade account has been recognised.
-
 Greener Ealing Ltd
 chris@ostoya.io
 Account EAL001
 ```
 
-This proves the returning-card path reached fresh Magento customer/company authorization rather than stopping at a stored NFC snapshot.
+Accepted controls include:
 
-## K1 — authenticated catalogue home
+- ECDSA P-256 signed kiosk requests with timestamp + nonce replay protection
+- SHA-256-only NFC credential persistence
+- RS256 one-use kiosk-to-Commerce customer assertions
+- matching Magento public-key fingerprint/config
+- numeric Magento customer ID from `css_company_context.customer_id`
+- Magento 2.4.9 opaque `customer.id` compatibility (`Ng==` is not used as assertion `sub`)
+- 15-minute opaque `css_kiosk_session`
+- Magento bearer token held server-side only
+- fresh Magento customer/company authorization after returning-card exchange
+- sign-out/replacement revokes Magento token best-effort
 
-Current branch:
+## K1 — authenticated catalogue — accepted and merged
+
+Merged PR:
 
 ```text
-feat/authenticated-catalogue-home
+#11 Add authenticated GraphQL catalogue home
 ```
 
-Implemented:
-
-- `Continue to catalogue` now uses the existing authenticated kiosk session
-- new trusted `POST /api/catalogue` route
-- every catalogue request must pass signed kiosk-device verification
-- route also resolves the HttpOnly `css_kiosk_session`
-- Magento customer bearer token is taken only from server session memory
-- browser never receives the bearer token
-- authenticated Magento `categoryList` supplies top-level category navigation
-- authenticated Magento `products` supplies product search, customer-authorized price range, stock status and images
-- category filtering uses Magento category UIDs
-- default product landing query uses a valid `price >= 0` GraphQL filter so the core `products` resolver always receives `search` or `filter`
-- 8-product touch-first catalogue grid
-- live search box
-- top-level category chips
-- signed-in company/account context remains visible
-- loading / empty / service-unavailable states
-- session expiry fails closed and returns to the NFC authentication path
-- sign out remains available from catalogue
-- basket is deliberately disabled/placeholder until K2
-
-### K1 request boundary
+Live acceptance completed on 7 Sep 2026. The accepted request path is:
 
 ```text
 browser
-  → signed POST /api/catalogue
-  → HttpOnly css_kiosk_session sent automatically
-  → css_kiosk validates device signature + nonce
-  → css_kiosk resolves in-memory session for that device
-  → server reads Magento token from session memory
-  → HTTPS GraphQL categoryList + products
-  → safe product/category/price/stock JSON
-  → browser
+  -> signed POST /api/catalogue + HttpOnly css_kiosk_session
+  -> css_kiosk verifies device + nonce
+  -> resolves in-memory session bound to device
+  -> reads Magento token from server memory
+  -> Magento GraphQL categoryList + products
+  -> safe catalogue/category/price/stock JSON
+  -> browser
 ```
 
-The browser-visible catalogue response contains only display-safe catalogue and customer context. It never contains the Magento bearer token or RSA private key material.
+Accepted runtime behavior:
 
-### K1 live acceptance still required
+- linked card -> Welcome -> Continue to catalogue
+- live catalogue loads successfully
+- live search works
+- category filtering works
+- authenticated company/account identity remains visible
+- customer-authorized price/stock data renders
+- sign out -> same card -> new kiosk session -> catalogue works again
+- no Magento bearer token is returned to browser JavaScript
 
-On the kiosk host:
+## K2 — product detail and basket — in progress
 
-```bash
-cd /srv/css/css_kiosk
-git fetch origin
-git checkout feat/authenticated-catalogue-home
-git reset --hard origin/feat/authenticated-catalogue-home
-yarn lint
-yarn typecheck
-yarn build
-yarn dev
-```
-
-Then with simulator `Device trust: Trusted` and `Magento auth: Real Magento`:
+Active branch / PR:
 
 ```text
-present linked card
-→ Welcome, Chris / Greener Ealing Ltd / EAL001
-→ Continue to catalogue
-→ POST /api/catalogue 200
-→ category strip visible
-→ product cards visible
-→ search known SKU/name returns results
-→ select category returns category products
-→ sign out
-→ same card signs in again
+feat/product-detail-basket
+#12 Add product detail and authenticated basket
 ```
 
-Also inspect browser network/storage and confirm no Magento bearer token is visible. The only customer session credential in the browser should be the HttpOnly `css_kiosk_session` cookie.
+This slice adds:
 
-Before calling customer/company pricing accepted, compare at least one known product price against expected Magento/customer evidence for EAL001.
+- touch product detail modal
+- Magento product `__typename` awareness
+- quantity stepper
+- direct add for in-stock `SimpleProduct`
+- live basket count
+- authenticated Magento customer basket
+- +/- line quantity controls
+- remove line
+- subtotal ex VAT + current Magento grand total
+
+Server boundary:
+
+```text
+browser
+  -> signed POST /api/cart + HttpOnly css_kiosk_session
+  -> css_kiosk resolves trusted device + session
+  -> Magento token stays in server memory
+  -> GraphQL customerCart / addProductsToCart / updateCartItems / removeItemFromCart
+  -> safe basket JSON only
+```
+
+The Magento cart ID is resolved server-side and is not exposed to the browser.
+
+### Product-type rule
+
+The first K2 basket slice adds only `SimpleProduct` directly. Configurable, bundle and grouped products require explicit option selection and therefore fail closed as "options required" rather than guessing a variant.
+
+See `docs/K2_PRODUCT_BASKET.md` for the exact contract and runtime acceptance.
 
 ## Secrets/token boundary
 
@@ -255,31 +152,21 @@ Allowed persistence/exposure:
 
 - SHA-256 NFC credential hash in SQLite
 - RSA public key in CSS Commerce configuration
-- device public key server-side
-- opaque `css_kiosk_session` cookie in the browser
+- kiosk device public key server-side
+- opaque HttpOnly `css_kiosk_session` cookie
 - safe customer/company display metadata
 - safe catalogue/category/price/stock metadata
+- safe basket line/totals metadata
 
-## Next after K1 acceptance
+## Remaining after current K2 slice
 
-### K2 — product detail and basket
-
-- touch-first product detail
-- quantity controls
-- add-to-basket
-- server-side customer cart through Magento GraphQL
-- verified company/customer pricing and product visibility
-- stock/availability detail
-- basket persistence bound to the authenticated customer session
-
-The same rule continues: the browser talks only to `css_kiosk`; Magento bearer tokens remain server-side and Magento integration remains GraphQL-only.
-
-## Later work
-
+- configurable/bundle product option selection
+- deeper product detail / availability
+- pagination/filtering
+- basket acceptance and checkout/counter-handoff design
 - inactivity-driven session reset
 - offline/degraded network state
 - favourites/common purchases
-- checkout/trade-counter handoff
 - physical TouchWo/NFC hardware inspection
 - Android kiosk shell
 - production serving/hardening at `kiosk.csscdn.co.uk`
