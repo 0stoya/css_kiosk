@@ -49,6 +49,8 @@ export function KioskAuthDemo() {
   }
 
   function simulateTap() {
+    if (!showPrototypeTools) return;
+
     setState("reading");
     setMessage(null);
 
@@ -100,9 +102,20 @@ export function KioskAuthDemo() {
             <h1>{state === "reading" ? "Reading your card…" : "Tap your card to sign in"}</h1>
             <p className="lead">Use your CSS customer card for fast access to your account and trade pricing.</p>
 
-            <button className="nfc-target" type="button" onClick={simulateTap} disabled={state === "reading"}>
+            <button
+              className="nfc-target"
+              type="button"
+              onClick={simulateTap}
+              disabled={state === "reading" || !showPrototypeTools}
+            >
               <span className="nfc-icon"><ContactlessIcon /></span>
-              <span className="nfc-label">{state === "reading" ? "Hold card in place" : "Tap card here"}</span>
+              <span className="nfc-label">
+                {state === "reading"
+                  ? "Hold card in place"
+                  : showPrototypeTools
+                    ? "Tap card here"
+                    : "NFC reader required"}
+              </span>
             </button>
 
             <p className="privacy-note">The kiosk automatically signs out after inactivity.</p>
