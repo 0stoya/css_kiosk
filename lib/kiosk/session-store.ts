@@ -70,9 +70,7 @@ export function createKioskSession(input: {
 
   const key = sessionHash(sessionId);
   sessions.set(key, session);
-  const timer = setTimeout(() => expireSession(key), SESSION_TTL_MS);
-  timer.unref?.();
-  timers.set(key, timer);
+  timers.set(key, setTimeout(() => expireSession(key), SESSION_TTL_MS));
 
   return { sessionId, session };
 }
