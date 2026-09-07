@@ -5,6 +5,7 @@ export type KioskAuthState =
   | "linking"
   | "confirm-link"
   | "welcome"
+  | "catalogue"
   | "error";
 
 export type MockCardScenario = "registered" | "unregistered" | "revoked";
