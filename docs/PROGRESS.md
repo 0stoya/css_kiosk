@@ -2,142 +2,197 @@
 
 Updated: 7 Sep 2026
 
-This document records the accepted state of `css_kiosk` and the active implementation slice so work can continue without re-discovering security, transport or deployment boundaries.
+This document records the accepted state of `css_kiosk` and the current implementation slice so work can continue without re-discovering security, transport or deployment boundaries.
 
-## Non-negotiable Magento boundary
+## Current architecture
 
-The kiosk/Magento integration is **HTTPS GraphQL only**.
+```text
+TouchWo / simulator NFC event
+        ↓
+NfcReader abstraction
+        ↓
+signed kiosk-device request (ECDSA P-256)
+        ↓
+server resolves SHA-256 NFC credential hash
+        ↓
+known card?
+  ├─ no → Magento GraphQL generateCustomerToken
+  │       → fresh customer + css_company_context
+  │       → explicit card-link confirmation
+  │       → durable hashed NFC mapping
+  │
+  └─ yes → one-use RS256 customer_session assertion
+          → CSS Commerce GraphQL css_kiosk_customer_session
+          → Magento customer token, server memory only
+          → fresh customer + css_company_context
+          → opaque HttpOnly css_kiosk_session
+          → Welcome
+          → Continue
+          → signed catalogue/cart requests + css_kiosk_session
+          → server-held Magento token
+          → Magento GraphQL catalogue/cart operations
+          → safe browser data only
+```
+
+## Magento boundary
+
+The kiosk/Magento integration is **GraphQL only**.
 
 ```text
 First-time auth         generateCustomerToken
 Returning-card session  css_kiosk_customer_session
 Identity/company        customer + css_company_context
 Catalogue/categories    products + categoryList
-Customer basket         customerCart + cart mutations
+Product options         ConfigurableProduct / BundleProduct / GroupedProduct fields
+Basket                  customerCart + addProductsToCart/updateCartItems/removeItemFromCart
 Logout/revocation       revokeCustomerToken
 ```
 
-The deployed custom Magento-side boundary is only:
+The deployed Magento-side customization boundary is:
 
 ```text
 0stoya/Fluid/Css/Commerce
 ```
 
-No kiosk-specific REST endpoint is part of the architecture. RSA/ECDSA signatures authenticate trust boundaries; GraphQL remains the Magento transport.
+No kiosk-specific REST endpoint is part of the architecture. No Magento Admin/integration credential belongs in `css_kiosk`.
 
-## Accepted trust/session architecture
+RSA and ECDSA are trust/authentication mechanisms; HTTPS GraphQL remains the Magento transport.
 
-```text
-NFC event
-  -> NfcReader
-  -> signed kiosk-device request (ECDSA P-256)
-  -> SHA-256 NFC credential lookup
-  -> known card
-  -> one-use RS256 customer_session assertion
-  -> Css/Commerce GraphQL css_kiosk_customer_session
-  -> Magento customer token, server memory only
-  -> fresh customer + css_company_context
-  -> opaque HttpOnly css_kiosk_session
-  -> authenticated kiosk UI
-```
+## Accepted milestones
 
-Unknown cards use Magento GraphQL `generateCustomerToken` once, then explicit card-link confirmation. Passwords are never persisted. Raw NFC credentials are never stored.
+### K0 — authentication and trusted kiosk session
 
-## K0 — authentication foundation — accepted
-
-Live returning-card acceptance on 7 Sep 2026:
+Accepted against live Magento with:
 
 ```text
 Welcome, Chris
+Your trade account has been recognised.
 Greener Ealing Ltd
 chris@ostoya.io
 Account EAL001
 ```
 
-Accepted controls include:
-
-- ECDSA P-256 signed kiosk requests with timestamp + nonce replay protection
-- SHA-256-only NFC credential persistence
-- RS256 one-use kiosk-to-Commerce customer assertions
-- matching Magento public-key fingerprint/config
-- numeric Magento customer ID from `css_company_context.customer_id`
-- Magento 2.4.9 opaque `customer.id` compatibility (`Ng==` is not used as assertion `sub`)
-- 15-minute opaque `css_kiosk_session`
-- Magento bearer token held server-side only
-- fresh Magento customer/company authorization after returning-card exchange
-- sign-out/replacement revokes Magento token best-effort
-
-## K1 — authenticated catalogue — accepted and merged
-
-Merged PR:
+The accepted returning-card chain is:
 
 ```text
-#11 Add authenticated GraphQL catalogue home
+linked NFC
+→ trusted signed kiosk request
+→ numeric Magento customer ID
+→ one-use RS256 assertion
+→ GraphQL css_kiosk_customer_session
+→ fresh customer/company context
+→ opaque HttpOnly css_kiosk_session
 ```
 
-Live acceptance completed on 7 Sep 2026. The accepted request path is:
+Magento 2.4.9 opaque `customer.id` values such as `Ng==` are not used for the assertion. Numeric `css_company_context.customer_id` is the accepted identity source.
+
+### K1 — authenticated catalogue
+
+Accepted and merged.
 
 ```text
-browser
-  -> signed POST /api/catalogue + HttpOnly css_kiosk_session
-  -> css_kiosk verifies device + nonce
-  -> resolves in-memory session bound to device
-  -> reads Magento token from server memory
-  -> Magento GraphQL categoryList + products
-  -> safe catalogue/category/price/stock JSON
-  -> browser
+Welcome
+→ Continue
+→ signed POST /api/catalogue
+→ server-held customer token
+→ Magento GraphQL categoryList + products
+→ live catalogue/search/category results
 ```
 
-Accepted runtime behavior:
+The browser never receives the Magento bearer token.
 
-- linked card -> Welcome -> Continue to catalogue
-- live catalogue loads successfully
-- live search works
-- category filtering works
-- authenticated company/account identity remains visible
-- customer-authorized price/stock data renders
-- sign out -> same card -> new kiosk session -> catalogue works again
-- no Magento bearer token is returned to browser JavaScript
+### K2 — authenticated basket
 
-## K2 — product detail and basket — in progress
+The simple-product basket slice is accepted and merged.
 
-Active branch / PR:
+Implemented and accepted baseline:
+
+- `customerCart`
+- direct simple-product add
+- quantity update
+- remove
+- product detail
+- basket totals
+- Magento cart persists with the customer account across kiosk sign-out/re-auth
+
+Current completion branch:
 
 ```text
-feat/product-detail-basket
-#12 Add product detail and authenticated basket
+feat/configurable-bundle-products
 ```
 
-This slice adds:
+Current PR adds the remaining CSS product-type flows.
 
-- touch product detail modal
-- Magento product `__typename` awareness
-- quantity stepper
-- direct add for in-stock `SimpleProduct`
-- live basket count
-- authenticated Magento customer basket
-- +/- line quantity controls
-- remove line
-- subtotal ex VAT + current Magento grand total
-
-Server boundary:
+#### Configurable products
 
 ```text
-browser
-  -> signed POST /api/cart + HttpOnly css_kiosk_session
-  -> css_kiosk resolves trusted device + session
-  -> Magento token stays in server memory
-  -> GraphQL customerCart / addProductsToCart / updateCartItems / removeItemFromCart
-  -> safe basket JSON only
+products(filter: { sku })
+→ ConfigurableProduct.configurable_options
+→ choose exactly one value per required attribute
+→ Magento option value UIDs
+→ addProductsToCart selected_options
 ```
 
-The Magento cart ID is resolved server-side and is not exposed to the browser.
+No client-side variant SKU guessing or UID decoding.
 
-### Product-type rule
+#### Bundle products
 
-The first K2 basket slice adds only `SimpleProduct` directly. Configurable, bundle and grouped products require explicit option selection and therefore fail closed as "options required" rather than guessing a variant.
+```text
+products(filter: { sku })
+→ BundleProduct.items/options
+→ choose required/optional choices
+→ Magento bundle option UIDs
+→ addProductsToCart selected_options
+```
 
-See `docs/K2_PRODUCT_BASKET.md` for the exact contract and runtime acceptance.
+Bundle child quantities remain Magento-defined until a live bundle proves shopper-adjustable component quantity is needed.
+
+#### Grouped products
+
+Live acceptance identified `CTR251/GR` (Combat Trouser Graphite c/w) as a `GroupedProduct` rather than configurable/bundle.
+
+Grouped support is now implemented on the same K2 branch:
+
+```text
+products(filter: { sku })
+→ GroupedProduct.items
+→ associated child SKU/name/stock
+→ touch quantity per child
+→ choose at least one child quantity
+→ signed /api/cart add_grouped
+→ addProductsToCart with one CartItemInput per selected child SKU
+```
+
+Out-of-stock child rows cannot be selected. The grouped parent SKU is not submitted as a simple cart line.
+
+Static validation was green before grouped support was added. The grouped change now requires the same final validation again:
+
+```bash
+yarn lint
+yarn typecheck
+yarn build
+```
+
+Then runtime acceptance must include one live configurable, one bundle, and the live grouped product.
+
+## Checkout boundary — local locker only
+
+Kiosk delivery is **local locker only**.
+
+There will be no general customer delivery-address form and no arbitrary carrier/shipping-method picker.
+
+Target K3 boundary:
+
+```text
+trusted kiosk/device
+→ server resolves this kiosk's configured local locker
+→ browser cannot replace address/locker/carrier/method
+→ css_kiosk applies only the trusted locker destination/method
+→ Magento checkout/order GraphQL
+→ safe order confirmation/reference
+```
+
+This constraint is part of the product/security model, not just UI presentation.
 
 ## Secrets/token boundary
 
@@ -147,26 +202,23 @@ Never persist or expose:
 - Magento customer bearer token in browser-visible state
 - RSA private assertion key in source control/Magento/browser/NFC
 - raw NFC credential in SQLite
+- arbitrary checkout destination/method supplied by browser
 
 Allowed persistence/exposure:
 
 - SHA-256 NFC credential hash in SQLite
 - RSA public key in CSS Commerce configuration
-- kiosk device public key server-side
-- opaque HttpOnly `css_kiosk_session` cookie
+- device public key server-side
+- opaque `css_kiosk_session` cookie in the browser
 - safe customer/company display metadata
-- safe catalogue/category/price/stock metadata
-- safe basket line/totals metadata
+- safe catalogue/category/price/stock/product-option metadata
+- safe grouped child SKUs required for customer quantity selection
 
-## Remaining after current K2 slice
+## Next
 
-- configurable/bundle product option selection
-- deeper product detail / availability
-- pagination/filtering
-- basket acceptance and checkout/counter-handoff design
-- inactivity-driven session reset
-- offline/degraded network state
-- favourites/common purchases
-- physical TouchWo/NFC hardware inspection
-- Android kiosk shell
-- production serving/hardening at `kiosk.csscdn.co.uk`
+1. Re-run lint/typecheck/build on the grouped-support PR head.
+2. Runtime-test configurable product selection.
+3. Runtime-test bundle product selection.
+4. Runtime-test grouped product `CTR251/GR` quantities and add.
+5. Merge K2 completion once all three product types are accepted.
+6. Start K3 local-locker-only checkout.
