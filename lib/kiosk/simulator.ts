@@ -1,20 +1,8 @@
-import type { NfcCredential, NfcErrorHandler, NfcReadHandler, NfcReader } from "@/lib/kiosk/nfc-reader";
+import { SIMULATED_NFC_CREDENTIALS } from "@/lib/kiosk/development-fixtures";
+import type { NfcErrorHandler, NfcReadHandler, NfcReader } from "@/lib/kiosk/nfc-reader";
 
 export type SimulatedCardFixture = "registered" | "unregistered" | "revoked" | "read-error";
 export type SimulatedMagentoResult = "real" | "success" | "invalid-credentials" | "unavailable";
-export type SimulatedCardOutcome = "registered" | "unregistered" | "revoked";
-
-const simulatedCredentials: Record<Exclude<SimulatedCardFixture, "read-error">, NfcCredential> = {
-  registered: { type: "secure-token", value: "SIM-CARD-REGISTERED-001" },
-  unregistered: { type: "secure-token", value: "SIM-CARD-UNREGISTERED-001" },
-  revoked: { type: "secure-token", value: "SIM-CARD-REVOKED-001" },
-};
-
-const simulatedOutcomes = new Map<string, SimulatedCardOutcome>([
-  [simulatedCredentials.registered.value, "registered"],
-  [simulatedCredentials.unregistered.value, "unregistered"],
-  [simulatedCredentials.revoked.value, "revoked"],
-]);
 
 export interface KioskNfcSimulator extends NfcReader {
   setAvailable(available: boolean): void;
@@ -66,7 +54,7 @@ class BrowserKioskNfcSimulator implements KioskNfcSimulator {
         return;
       }
 
-      this.readHandlers.forEach((handler) => handler(simulatedCredentials[fixture]));
+      this.readHandlers.forEach((handler) => handler(SIMULATED_NFC_CREDENTIALS[fixture]));
     }, 220);
   }
 
@@ -77,8 +65,4 @@ class BrowserKioskNfcSimulator implements KioskNfcSimulator {
 
 export function createKioskNfcSimulator(): KioskNfcSimulator {
   return new BrowserKioskNfcSimulator();
-}
-
-export function resolveSimulatedCard(credential: NfcCredential): SimulatedCardOutcome | null {
-  return simulatedOutcomes.get(credential.value) ?? null;
 }

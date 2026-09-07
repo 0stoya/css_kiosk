@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
+import type { NfcCredential } from "@/lib/kiosk/nfc-reader";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import {
   createKioskNfcSimulator,
   KioskNfcSimulator,
-  resolveSimulatedCard,
   SimulatedCardFixture,
   SimulatedMagentoResult,
 } from "@/lib/kiosk/simulator";
@@ -42,22 +42,29 @@ function LockIcon() {
   );
 }
 
-type VerifyCustomerResponse = {
+type CustomerResponse = {
   ok?: boolean;
+  code?: string;
   error?: string;
   customer?: VerifiedKioskCustomer;
+};
+
+type ResolveCardResponse = CustomerResponse & {
+  status?: "registered" | "unregistered" | "revoked";
 };
 
 export function KioskAuthDemo() {
   const [state, setState] = useState<KioskAuthState>("idle");
   const [cardFixture, setCardFixture] = useState<SimulatedCardFixture>("unregistered");
-  const [magentoResult, setMagentoResult] = useState<SimulatedMagentoResult>("success");
+  const [magentoResult, setMagentoResult] = useState<SimulatedMagentoResult>("real");
   const [readerAvailable, setReaderAvailable] = useState(true);
+  const [activeCredential, setActiveCredential] = useState<NfcCredential | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [verifiedCustomer, setVerifiedCustomer] = useState<VerifiedKioskCustomer | null>(null);
+  const [linkingCard, setLinkingCard] = useState(false);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const showPrototypeTools = process.env.NODE_ENV !== "production";
 
@@ -66,28 +73,41 @@ export function KioskAuthDemo() {
 
     const simulator = createKioskNfcSimulator();
     simulatorRef.current = simulator;
-    let backendTimer: number | null = null;
 
-    const removeCredentialHandler = simulator.onCredential((credential) => {
+    async function resolveCredential(credential: NfcCredential) {
+      setActiveCredential(credential);
       setState("reading");
       setMessage(null);
       setFormError(null);
       setVerifiedCustomer(null);
 
-      backendTimer = window.setTimeout(() => {
-        const outcome = resolveSimulatedCard(credential);
+      try {
+        const response = await fetch("/api/nfc/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+        const body = (await response.json()) as ResolveCardResponse;
 
-        if (outcome === "registered") {
+        if (!response.ok || !body.ok) {
+          setMessage(body.error || "Card lookup is unavailable right now.");
+          setState("error");
+          return;
+        }
+
+        if (body.status === "registered" && body.customer) {
+          setVerifiedCustomer(body.customer);
+          setEmail(body.customer.email);
           setState("welcome");
           return;
         }
 
-        if (outcome === "unregistered") {
+        if (body.status === "unregistered") {
           setState("unregistered");
           return;
         }
 
-        if (outcome === "revoked") {
+        if (body.status === "revoked") {
           setMessage("This card is no longer active. Please ask a member of staff for help.");
           setState("error");
           return;
@@ -95,7 +115,14 @@ export function KioskAuthDemo() {
 
         setMessage("This card could not be recognised.");
         setState("error");
-      }, 650);
+      } catch {
+        setMessage("Card lookup is unavailable right now. Please try again.");
+        setState("error");
+      }
+    }
+
+    const removeCredentialHandler = simulator.onCredential((credential) => {
+      void resolveCredential(credential);
     });
 
     const removeErrorHandler = simulator.onError((error) => {
@@ -106,7 +133,6 @@ export function KioskAuthDemo() {
     void simulator.start();
 
     return () => {
-      if (backendTimer !== null) window.clearTimeout(backendTimer);
       removeCredentialHandler();
       removeErrorHandler();
       void simulator.stop();
@@ -115,12 +141,15 @@ export function KioskAuthDemo() {
   }, [showPrototypeTools]);
 
   function reset() {
+    void fetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
     setState("idle");
+    setActiveCredential(null);
     setEmail("");
     setPassword("");
     setMessage(null);
     setFormError(null);
     setVerifiedCustomer(null);
+    setLinkingCard(false);
   }
 
   function presentSimulatedCard() {
@@ -167,14 +196,24 @@ export function KioskAuthDemo() {
       return;
     }
 
+    if (!activeCredential) {
+      setFormError("Tap the card again before signing in.");
+      setState("unregistered");
+      return;
+    }
+
     try {
       const response = await fetch("/api/auth/verify-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: submittedEmail, password: submittedPassword }),
+        body: JSON.stringify({
+          email: submittedEmail,
+          password: submittedPassword,
+          credential: activeCredential,
+        }),
       });
 
-      const body = (await response.json()) as VerifyCustomerResponse;
+      const body = (await response.json()) as CustomerResponse;
 
       if (!response.ok || !body.ok || !body.customer) {
         const errorMessage = body.error || "Customer sign in could not be completed.";
@@ -199,21 +238,43 @@ export function KioskAuthDemo() {
     }
   }
 
-  function confirmLink() {
-    if (!showPrototypeTools) {
-      setMessage("Card linking is not connected on this kiosk yet.");
-      setState("error");
+  async function confirmLink() {
+    if (showPrototypeTools && magentoResult !== "real") {
+      setState("welcome");
       return;
     }
 
-    setState("welcome");
+    setLinkingCard(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/nfc/link", { method: "POST" });
+      const body = (await response.json()) as CustomerResponse;
+
+      if (!response.ok || !body.ok || !body.customer) {
+        setMessage(body.error || "This card could not be linked.");
+        setState("error");
+        return;
+      }
+
+      setVerifiedCustomer(body.customer);
+      setEmail(body.customer.email);
+      setState("welcome");
+    } catch {
+      setMessage("Card linking is unavailable right now. Please try again.");
+      setState("error");
+    } finally {
+      setLinkingCard(false);
+    }
   }
 
   const waiting = state === "idle" || state === "reading";
   const displayFirstName = verifiedCustomer?.firstName || mockCustomer.firstName;
   const displayLastName = verifiedCustomer?.lastName || mockCustomer.lastName;
   const displayEmail = verifiedCustomer?.email || email || mockCustomer.email;
-  const displayCompany = verifiedCustomer?.company?.name || mockCustomer.companyName;
+  const displayCompany = verifiedCustomer
+    ? verifiedCustomer.company?.name || "Personal account"
+    : mockCustomer.companyName;
   const displayCompanyReference = verifiedCustomer?.company?.reference || null;
   const companyCount = verifiedCustomer?.companies.length || 0;
 
@@ -311,24 +372,26 @@ export function KioskAuthDemo() {
               {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
               {companyCount > 1 ? <span>{companyCount} company accounts available</span> : null}
             </div>
-            <p className="lead">Future taps of this card will sign in to this customer account on an authorised CSS kiosk.</p>
-            <button className="primary-button" type="button" onClick={confirmLink}>Link this card to my account</button>
-            <button className="secondary-button" type="button" onClick={reset}>Cancel</button>
+            <p className="lead">Future taps of this card will recognise this customer account on an authorised CSS kiosk.</p>
+            <button className="primary-button" type="button" onClick={() => void confirmLink()} disabled={linkingCard}>
+              {linkingCard ? "Linking card…" : "Link this card to my account"}
+            </button>
+            <button className="secondary-button" type="button" onClick={reset} disabled={linkingCard}>Cancel</button>
           </section>
         ) : null}
 
         {state === "welcome" ? (
           <section className="auth-panel auth-panel-centred">
             <div className="success-badge">✓</div>
-            <p className="eyebrow">Signed in</p>
+            <p className="eyebrow">Card recognised</p>
             <h1>Welcome, {displayFirstName}</h1>
-            <p className="lead">Your trade account is ready.</p>
+            <p className="lead">Your trade account has been recognised.</p>
             <div className="customer-card compact">
               <strong>{displayCompany}</strong>
               <span>{displayEmail}</span>
               {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
             </div>
-            <button className="primary-button" type="button" onClick={() => setMessage("Catalogue workspace comes in K1.")}>Start shopping</button>
+            <button className="primary-button" type="button" onClick={() => setMessage("Authenticated catalogue session comes in the next slice.")}>Continue</button>
             <button className="secondary-button" type="button" onClick={reset}>Sign out</button>
             {message ? <p className="demo-message">{message}</p> : null}
           </section>
@@ -348,7 +411,7 @@ export function KioskAuthDemo() {
       {showPrototypeTools ? (
         <aside className="prototype-tools" aria-label="Kiosk simulator controls">
           <strong>Kiosk simulator</strong>
-          <span>Development only · Android reader and backend fixtures</span>
+          <span>Development only · Android reader simulated; card links persist server-side</span>
 
           <label>
             Reader
@@ -364,9 +427,9 @@ export function KioskAuthDemo() {
           <label>
             Card
             <select value={cardFixture} onChange={(event) => setCardFixture(event.target.value as SimulatedCardFixture)}>
-              <option value="unregistered">Unknown card</option>
-              <option value="registered">Registered card</option>
-              <option value="revoked">Revoked card</option>
+              <option value="unregistered">Unknown / linkable card</option>
+              <option value="registered">Fixture: registered card</option>
+              <option value="revoked">Fixture: revoked card</option>
               <option value="read-error">Read error</option>
             </select>
           </label>
