@@ -91,6 +91,41 @@ type BasketResponse = {
   basket?: Basket;
 };
 
+type LockerCheckoutReview = {
+  locker: {
+    label: string;
+    street: string[];
+    city: string;
+    region: string | null;
+    postcode: string;
+    countryCode: string;
+  };
+  shipping: {
+    carrierCode: string;
+    methodCode: string;
+    carrierTitle: string;
+    methodTitle: string;
+    amount: BasketMoney | null;
+  };
+  basket: {
+    totalQuantity: number;
+    subtotal: BasketMoney | null;
+    grandTotal: BasketMoney | null;
+  };
+  ordering: {
+    canCheckout: boolean;
+    canSubmitCreditOrder: boolean;
+    canAutoApproveCreditOrder: boolean;
+  };
+};
+
+type LockerCheckoutResponse = {
+  ok?: boolean;
+  code?: string;
+  error?: string;
+  checkout?: LockerCheckoutReview;
+};
+
 type BasketAction =
   | { action: "get" }
   | { action: "add"; sku: string; quantity: number; selectedOptions?: string[] }
@@ -173,6 +208,9 @@ export function CatalogueHome({
   const [basketMutating, setBasketMutating] = useState(false);
   const [basketError, setBasketError] = useState<string | null>(null);
   const [basketOpen, setBasketOpen] = useState(false);
+  const [lockerCheckout, setLockerCheckout] = useState<LockerCheckoutReview | null>(null);
+  const [lockerCheckoutLoading, setLockerCheckoutLoading] = useState(false);
+  const [lockerCheckoutError, setLockerCheckoutError] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<CatalogueProduct | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [productOptions, setProductOptions] = useState<KioskProductOptions | null>(null);
@@ -280,6 +318,8 @@ export function CatalogueHome({
   async function performBasketAction(action: BasketAction) {
     setBasketMutating(true);
     setBasketError(null);
+    setLockerCheckout(null);
+    setLockerCheckoutError(null);
 
     try {
       const response = await signedFetch("/api/cart", {
@@ -307,6 +347,46 @@ export function CatalogueHome({
     } finally {
       setBasketMutating(false);
       setBasketLoading(false);
+    }
+  }
+
+  async function prepareLockerCheckout() {
+    setLockerCheckoutLoading(true);
+    setLockerCheckoutError(null);
+
+    try {
+      const response = await signedFetch("/api/checkout/locker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prepare" }),
+      });
+      const body = (await response.json()) as LockerCheckoutResponse;
+
+      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
+        handleSessionExpired();
+        return;
+      }
+
+      if (!response.ok || !body.ok || !body.checkout) {
+        setLockerCheckoutError(body.error || "Local locker checkout could not be prepared right now.");
+        return;
+      }
+
+      setLockerCheckout(body.checkout);
+      setBasket((current) =>
+        current
+          ? {
+              ...current,
+              totalQuantity: body.checkout!.basket.totalQuantity,
+              subtotal: body.checkout!.basket.subtotal,
+              grandTotal: body.checkout!.basket.grandTotal,
+            }
+          : current,
+      );
+    } catch {
+      setLockerCheckoutError("Local locker checkout could not be prepared right now.");
+    } finally {
+      setLockerCheckoutLoading(false);
     }
   }
 
@@ -372,6 +452,8 @@ export function CatalogueHome({
 
   function openProduct(product: CatalogueProduct) {
     setBasketOpen(false);
+    setLockerCheckout(null);
+    setLockerCheckoutError(null);
     setSelectedProduct(product);
     setSelectedQuantity(1);
     setBasketError(null);
@@ -447,6 +529,12 @@ export function CatalogueHome({
     });
   }
 
+  function closeBasket() {
+    setBasketOpen(false);
+    setLockerCheckout(null);
+    setLockerCheckoutError(null);
+  }
+
   const resultLabel = useMemo(() => {
     if (loading) return "Loading trade catalogue…";
     if (activeSearch) return `${totalCount} result${totalCount === 1 ? "" : "s"} for “${activeSearch}”`;
@@ -508,6 +596,8 @@ export function CatalogueHome({
           type="button"
           onClick={() => {
             closeProduct();
+            setLockerCheckout(null);
+            setLockerCheckoutError(null);
             setBasketOpen(true);
           }}
           aria-label={`Open basket with ${basketCount} items`}
@@ -742,106 +832,185 @@ export function CatalogueHome({
           <section className={styles.basketPanel} role="dialog" aria-modal="true" aria-labelledby="basket-title">
             <header className={styles.basketHeader}>
               <div>
-                <p className={styles.eyebrow}>Current order</p>
-                <h2 id="basket-title">Basket</h2>
+                <p className={styles.eyebrow}>{lockerCheckout ? "Local locker checkout" : "Current order"}</p>
+                <h2 id="basket-title">{lockerCheckout ? "Locker collection review" : "Basket"}</h2>
               </div>
-              <button className={styles.closeButton} type="button" onClick={() => setBasketOpen(false)} aria-label="Close basket">×</button>
+              <button className={styles.closeButton} type="button" onClick={closeBasket} aria-label="Close basket">×</button>
             </header>
 
-            {basketError ? <p className={styles.basketInlineError} role="alert">{basketError}</p> : null}
+            {basketError && !lockerCheckout ? <p className={styles.basketInlineError} role="alert">{basketError}</p> : null}
+            {lockerCheckoutError ? <p className={styles.basketInlineError} role="alert">{lockerCheckoutError}</p> : null}
 
-            {basketLoading ? (
-              <div className={styles.basketEmpty}>Loading basket…</div>
-            ) : null}
+            {lockerCheckout ? (
+              <>
+                <div className={styles.basketEmpty}>
+                  <strong>{lockerCheckout.locker.label}</strong>
+                  {lockerCheckout.locker.street.map((line) => <span key={line}>{line}</span>)}
+                  <span>
+                    {lockerCheckout.locker.city}
+                    {lockerCheckout.locker.region ? `, ${lockerCheckout.locker.region}` : ""}
+                  </span>
+                  <span>{lockerCheckout.locker.postcode} · {lockerCheckout.locker.countryCode}</span>
+                </div>
 
-            {!basketLoading && (!basket || basket.items.length === 0) ? (
-              <div className={styles.basketEmpty}>
-                <strong>Your basket is empty</strong>
-                <span>Close the basket and choose a product to get started.</span>
-              </div>
-            ) : null}
+                <div className={styles.totalRows}>
+                  <span>
+                    <small>Delivery method</small>
+                    <strong>{lockerCheckout.shipping.methodTitle}</strong>
+                  </span>
+                  <span>
+                    <small>Locker delivery</small>
+                    <strong>
+                      {lockerCheckout.shipping.amount
+                        ? formatMoney(lockerCheckout.shipping.amount.value, lockerCheckout.shipping.amount.currency)
+                        : "Included"}
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Subtotal ex VAT</small>
+                    <strong>
+                      {lockerCheckout.basket.subtotal
+                        ? formatMoney(lockerCheckout.basket.subtotal.value, lockerCheckout.basket.subtotal.currency)
+                        : "—"}
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Checkout total</small>
+                    <strong>
+                      {lockerCheckout.basket.grandTotal
+                        ? formatMoney(lockerCheckout.basket.grandTotal.value, lockerCheckout.basket.grandTotal.currency)
+                        : "—"}
+                    </strong>
+                  </span>
+                </div>
 
-            {!basketLoading && basket?.items.length ? (
-              <div className={styles.basketLines}>
-                {basket.items.map((line) => {
-                  const imageUrl = safeImageUrl(line.imageUrl);
-                  return (
-                    <article className={styles.basketLine} key={line.uid}>
-                      <div
-                        className={styles.basketLineImage}
-                        style={imageUrl ? { backgroundImage: `url(${JSON.stringify(imageUrl)})` } : undefined}
-                        role="img"
-                        aria-label={line.imageLabel || line.name}
-                      >
-                        {!imageUrl ? <span>{line.name.slice(0, 1).toUpperCase()}</span> : null}
-                      </div>
-                      <div className={styles.basketLineBody}>
-                        <span className={styles.sku}>{line.sku}</span>
-                        <strong>{line.name}</strong>
-                        <div className={styles.basketLinePrice}>
-                          {line.rowTotal
-                            ? formatMoney(line.rowTotal.value, line.rowTotal.currency)
-                            : line.unitPrice
-                              ? formatMoney(line.unitPrice.value * line.quantity, line.unitPrice.currency)
-                              : "Price on request"}
-                        </div>
-                        <div className={styles.basketLineActions}>
-                          <div className={styles.quantityControl} aria-label={`Quantity for ${line.name}`}>
-                            <button
-                              type="button"
-                              onClick={() => void changeBasketQuantity(line, line.quantity - 1)}
-                              disabled={basketMutating}
-                            >
-                              −
-                            </button>
-                            <output>{line.quantity}</output>
-                            <button
-                              type="button"
-                              onClick={() => void changeBasketQuantity(line, line.quantity + 1)}
-                              disabled={basketMutating || line.quantity >= 999}
-                            >
-                              +
-                            </button>
-                          </div>
-                          <button
-                            className={styles.removeButton}
-                            type="button"
-                            onClick={() => void performBasketAction({ action: "remove", itemUid: line.uid })}
-                            disabled={basketMutating}
+                <p className={styles.optionNotice}>
+                  This kiosk can deliver only to this local locker. The delivery address and shipping method were applied by the trusted kiosk server and confirmed by Magento.
+                </p>
+
+                <footer className={styles.basketFooter}>
+                  <button
+                    className={styles.removeButton}
+                    type="button"
+                    onClick={() => {
+                      setLockerCheckout(null);
+                      setLockerCheckoutError(null);
+                    }}
+                  >
+                    Back to basket
+                  </button>
+                  <button className={styles.checkoutButton} type="button" disabled>
+                    Order confirmation comes next
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <>
+                {basketLoading ? (
+                  <div className={styles.basketEmpty}>Loading basket…</div>
+                ) : null}
+
+                {!basketLoading && (!basket || basket.items.length === 0) ? (
+                  <div className={styles.basketEmpty}>
+                    <strong>Your basket is empty</strong>
+                    <span>Close the basket and choose a product to get started.</span>
+                  </div>
+                ) : null}
+
+                {!basketLoading && basket?.items.length ? (
+                  <div className={styles.basketLines}>
+                    {basket.items.map((line) => {
+                      const imageUrl = safeImageUrl(line.imageUrl);
+                      return (
+                        <article className={styles.basketLine} key={line.uid}>
+                          <div
+                            className={styles.basketLineImage}
+                            style={imageUrl ? { backgroundImage: `url(${JSON.stringify(imageUrl)})` } : undefined}
+                            role="img"
+                            aria-label={line.imageLabel || line.name}
                           >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : null}
+                            {!imageUrl ? <span>{line.name.slice(0, 1).toUpperCase()}</span> : null}
+                          </div>
+                          <div className={styles.basketLineBody}>
+                            <span className={styles.sku}>{line.sku}</span>
+                            <strong>{line.name}</strong>
+                            <div className={styles.basketLinePrice}>
+                              {line.rowTotal
+                                ? formatMoney(line.rowTotal.value, line.rowTotal.currency)
+                                : line.unitPrice
+                                  ? formatMoney(line.unitPrice.value * line.quantity, line.unitPrice.currency)
+                                  : "Price on request"}
+                            </div>
+                            <div className={styles.basketLineActions}>
+                              <div className={styles.quantityControl} aria-label={`Quantity for ${line.name}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => void changeBasketQuantity(line, line.quantity - 1)}
+                                  disabled={basketMutating}
+                                >
+                                  −
+                                </button>
+                                <output>{line.quantity}</output>
+                                <button
+                                  type="button"
+                                  onClick={() => void changeBasketQuantity(line, line.quantity + 1)}
+                                  disabled={basketMutating || line.quantity >= 999}
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <button
+                                className={styles.removeButton}
+                                type="button"
+                                onClick={() => void performBasketAction({ action: "remove", itemUid: line.uid })}
+                                disabled={basketMutating}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
-            <footer className={styles.basketFooter}>
-              <div className={styles.totalRows}>
-                <span>
-                  <small>Subtotal ex VAT</small>
-                  <strong>
-                    {basket?.subtotal
-                      ? formatMoney(basket.subtotal.value, basket.subtotal.currency)
-                      : "—"}
-                  </strong>
-                </span>
-                <span>
-                  <small>Current total</small>
-                  <strong>
-                    {basket?.grandTotal
-                      ? formatMoney(basket.grandTotal.value, basket.grandTotal.currency)
-                      : "—"}
-                  </strong>
-                </span>
-              </div>
-              <button className={styles.checkoutButton} type="button" disabled>
-                Local locker checkout comes next
-              </button>
-            </footer>
+                <footer className={styles.basketFooter}>
+                  <div className={styles.totalRows}>
+                    <span>
+                      <small>Subtotal ex VAT</small>
+                      <strong>
+                        {basket?.subtotal
+                          ? formatMoney(basket.subtotal.value, basket.subtotal.currency)
+                          : "—"}
+                      </strong>
+                    </span>
+                    <span>
+                      <small>Current total</small>
+                      <strong>
+                        {basket?.grandTotal
+                          ? formatMoney(basket.grandTotal.value, basket.grandTotal.currency)
+                          : "—"}
+                      </strong>
+                    </span>
+                  </div>
+                  <button
+                    className={styles.checkoutButton}
+                    type="button"
+                    onClick={() => void prepareLockerCheckout()}
+                    disabled={
+                      basketLoading ||
+                      basketMutating ||
+                      lockerCheckoutLoading ||
+                      !basket ||
+                      basket.items.length === 0
+                    }
+                  >
+                    {lockerCheckoutLoading ? "Preparing local locker…" : "Review local locker checkout"}
+                  </button>
+                </footer>
+              </>
+            )}
           </section>
         </div>
       ) : null}
