@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { CatalogueHome } from "@/components/catalogue-home";
 import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
 import {
   createDevelopmentKioskDeviceSigner,
@@ -76,6 +77,38 @@ export function KioskAuthDemo() {
   const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
   const showPrototypeTools = process.env.NODE_ENV !== "production";
 
+  const signedFetch = useCallback(async (input: string, init?: RequestInit) => {
+    const signer = deviceSignerRef.current;
+    if (!signer) throw new Error("Kiosk device signer is unavailable.");
+    return signer.signedFetch(input, init);
+  }, []);
+
+  const clearLocalState = useCallback((nextState: KioskAuthState = "idle") => {
+    setState(nextState);
+    setActiveCredential(null);
+    setEmail("");
+    setPassword("");
+    setMessage(null);
+    setFormError(null);
+    setVerifiedCustomer(null);
+    setLinkingCard(false);
+  }, []);
+
+  const signOut = useCallback(() => {
+    const signer = deviceSignerRef.current;
+    if (signer && deviceTrust === "trusted") {
+      void signer.signedFetch("/api/session/logout", { method: "POST" }).catch(() => undefined);
+      void signer.signedFetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
+    }
+    clearLocalState("idle");
+  }, [clearLocalState, deviceTrust]);
+
+  const sessionExpired = useCallback((sessionMessage: string) => {
+    setVerifiedCustomer(null);
+    setMessage(sessionMessage);
+    setState("error");
+  }, []);
+
   useEffect(() => {
     if (!showPrototypeTools) return;
 
@@ -84,12 +117,6 @@ export function KioskAuthDemo() {
     simulatorRef.current = simulator;
     deviceSignerRef.current = deviceSigner;
     let cancelled = false;
-
-    async function signedFetch(input: string, init?: RequestInit) {
-      const signer = deviceSignerRef.current;
-      if (!signer) throw new Error("Kiosk device signer is unavailable.");
-      return signer.signedFetch(input, init);
-    }
 
     async function resolveCredential(credential: NfcCredential) {
       setActiveCredential(credential);
@@ -151,9 +178,7 @@ export function KioskAuthDemo() {
       try {
         await deviceSigner.enroll();
         const statusResponse = await deviceSigner.signedFetch("/api/device/status");
-        if (!statusResponse.ok) {
-          throw new Error("Kiosk device trust check failed.");
-        }
+        if (!statusResponse.ok) throw new Error("Kiosk device trust check failed.");
 
         if (cancelled) return;
         setDeviceTrust("trusted");
@@ -176,22 +201,14 @@ export function KioskAuthDemo() {
       simulatorRef.current = null;
       deviceSignerRef.current = null;
     };
-  }, [showPrototypeTools]);
+  }, [showPrototypeTools, signedFetch]);
 
   function reset() {
     const signer = deviceSignerRef.current;
     if (signer && deviceTrust === "trusted") {
       void signer.signedFetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
     }
-
-    setState("idle");
-    setActiveCredential(null);
-    setEmail("");
-    setPassword("");
-    setMessage(null);
-    setFormError(null);
-    setVerifiedCustomer(null);
-    setLinkingCard(false);
+    clearLocalState("idle");
   }
 
   function presentSimulatedCard() {
@@ -244,15 +261,14 @@ export function KioskAuthDemo() {
       return;
     }
 
-    const signer = deviceSignerRef.current;
-    if (!signer || deviceTrust !== "trusted") {
+    if (!deviceSignerRef.current || deviceTrust !== "trusted") {
       setMessage("This kiosk is not trusted for customer sign in.");
       setState("error");
       return;
     }
 
     try {
-      const response = await signer.signedFetch("/api/auth/verify-customer", {
+      const response = await signedFetch("/api/auth/verify-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -266,7 +282,6 @@ export function KioskAuthDemo() {
 
       if (!response.ok || !body.ok || !body.customer) {
         const errorMessage = body.error || "Customer sign in could not be completed.";
-
         if (response.status === 400 || response.status === 401) {
           setFormError(errorMessage);
           setState("unregistered");
@@ -293,8 +308,7 @@ export function KioskAuthDemo() {
       return;
     }
 
-    const signer = deviceSignerRef.current;
-    if (!signer || deviceTrust !== "trusted") {
+    if (!deviceSignerRef.current || deviceTrust !== "trusted") {
       setMessage("This kiosk is not trusted for card linking.");
       setState("error");
       return;
@@ -304,7 +318,7 @@ export function KioskAuthDemo() {
     setMessage(null);
 
     try {
-      const response = await signer.signedFetch("/api/nfc/link", { method: "POST" });
+      const response = await signedFetch("/api/nfc/link", { method: "POST" });
       const body = (await response.json()) as CustomerResponse;
 
       if (!response.ok || !body.ok || !body.customer) {
@@ -322,6 +336,22 @@ export function KioskAuthDemo() {
     } finally {
       setLinkingCard(false);
     }
+  }
+
+  function continueToCatalogue() {
+    if (showPrototypeTools && magentoResult !== "real") {
+      setMessage("Choose Real Magento in the simulator to test the authenticated catalogue.");
+      return;
+    }
+
+    if (!verifiedCustomer) {
+      setMessage("Your authenticated customer session is unavailable. Tap your card again.");
+      setState("error");
+      return;
+    }
+
+    setMessage(null);
+    setState("catalogue");
   }
 
   const waiting = state === "idle" || state === "reading";
@@ -447,10 +477,19 @@ export function KioskAuthDemo() {
               <span>{displayEmail}</span>
               {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
             </div>
-            <button className="primary-button" type="button" onClick={() => setMessage("Authenticated catalogue session comes in the next slice.")}>Continue</button>
-            <button className="secondary-button" type="button" onClick={reset}>Sign out</button>
+            <button className="primary-button" type="button" onClick={continueToCatalogue}>Continue to catalogue</button>
+            <button className="secondary-button" type="button" onClick={signOut}>Sign out</button>
             {message ? <p className="demo-message">{message}</p> : null}
           </section>
+        ) : null}
+
+        {state === "catalogue" && verifiedCustomer ? (
+          <CatalogueHome
+            customer={verifiedCustomer}
+            signedFetch={signedFetch}
+            onSignOut={signOut}
+            onSessionExpired={sessionExpired}
+          />
         ) : null}
 
         {state === "error" ? (
@@ -464,7 +503,7 @@ export function KioskAuthDemo() {
         ) : null}
       </main>
 
-      {showPrototypeTools ? (
+      {showPrototypeTools && state !== "catalogue" ? (
         <aside className="prototype-tools" aria-label="Kiosk simulator controls">
           <strong>Kiosk simulator</strong>
           <span>Development only · signed device + Android NFC reader simulated</span>
