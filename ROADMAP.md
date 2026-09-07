@@ -25,9 +25,11 @@ Status: in progress
 - [x] signed-in welcome and sign-out reset
 - [x] simulator documented in `docs/SIMULATOR.md`
 - [x] real Magento customer-token + authenticated customer/company lookup implemented server-side
-- [ ] accept real Magento customer authentication against the live environment
-- [ ] define server-side NFC credential persistence and card-link proof
+- [x] real Magento customer authentication accepted against the live environment
+- [x] server-side hashed NFC credential persistence + five-minute pending card-link proof implemented
+- [ ] accept a real Magento account link against the persistent simulated card and confirm it survives restart
 - [ ] define kiosk device registration and trust model
+- [ ] define trusted kiosk-to-Magento authenticated session exchange for subsequent card taps
 - [ ] implement inactivity session reset
 - [ ] implement offline / degraded-network state
 - [ ] inspect TouchWo GD238C Android version, SoC, NFC hardware/API and browser/WebView capabilities
@@ -41,8 +43,10 @@ Status: in progress
 - Prototype controls are unavailable in a production build.
 - Production cannot create a fake NFC read or accept simulated Magento authentication.
 - Real Magento verification returns only safe customer/company data to the browser; the customer token is not returned or persisted client-side.
+- Raw NFC credentials are not stored; only a SHA-256 credential hash is persisted server-side.
+- Pending card links are short-lived, HttpOnly-bound and require explicit confirmation.
+- A linked card cannot silently move to another customer account.
 - No password, Magento token or reusable customer credential is persisted client-side.
-- Card linking requires successful Magento authentication and an explicit confirmation step once backend work begins.
 
 ## K1 — authenticated customer home
 
