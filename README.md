@@ -15,11 +15,12 @@ Customer-facing trade-counter kiosk for Chelmsford Safety Supplies.
 
 ## Magento transport rule: GraphQL only
 
-All `css_kiosk` customer authentication and session traffic to Magento uses HTTPS GraphQL.
+All `css_kiosk` customer authentication, session and catalogue traffic to Magento uses HTTPS GraphQL.
 
 - first-time email/password authentication: Magento `generateCustomerToken`
 - returning linked-card exchange: CSS Commerce `css_kiosk_customer_session`
 - fresh customer/company authorization: `customer` + `css_company_context`
+- authenticated catalogue: `categoryList` + `products`
 - logout/token invalidation: Magento `revokeCustomerToken`
 
 There is no kiosk-specific Magento REST endpoint and no Magento Admin/integration credential in this application.
@@ -28,7 +29,7 @@ RSA/ECDSA signatures authenticate trust boundaries; they do not replace GraphQL 
 
 ## Current foundation
 
-The kiosk can be developed and accepted before physical NFC hardware is available. The current K0 foundation includes:
+The kiosk can be developed and accepted before physical NFC hardware is available. The current foundation includes:
 
 - 1080 x 1920 touch-first portrait UI and CSS branding
 - development-only deterministic NFC/device simulator
@@ -41,6 +42,8 @@ The kiosk can be developed and accepted before physical NFC hardware is availabl
 - Magento customer tokens held server-side only
 - opaque, HttpOnly 15-minute kiosk browser session
 - fresh Magento customer/company authorization on every returning-card session
+- authenticated catalogue entry using that same kiosk session
+- server-side GraphQL categories/product search with safe catalogue JSON returned to the browser
 - sign-out/token-revocation path
 
 ### Live returning-card acceptance
@@ -61,7 +64,21 @@ registered linked card
 
 Magento 2.4.9 exposes `customer.id` as an opaque GraphQL ID (for example `Ng==`). Kiosk authorization therefore uses the numeric `css_company_context.customer_id` as the Magento entity ID required by the signed assertion contract. Legacy stored development snapshots are normalized on read.
 
-The next slice is **authenticated catalogue use**: `Continue` will enter catalogue/search/navigation using the existing server-side kiosk session while keeping the Magento bearer token out of browser-visible storage and responses.
+## Authenticated catalogue boundary
+
+`Continue to catalogue` does not create a second browser authentication mechanism. It reuses the existing `css_kiosk_session`:
+
+```text
+browser
+  → signed POST /api/catalogue + HttpOnly css_kiosk_session
+  → css_kiosk verifies kiosk device and session
+  → server-held Magento customer token
+  → Magento GraphQL categoryList + products
+  → safe category/product/price/stock data
+  → browser
+```
+
+The browser never receives the Magento bearer token. Product search and category filtering are performed server-side against Magento GraphQL using the authenticated customer token, so live customer/company pricing and visibility can be verified without exposing credentials client-side.
 
 ## Security boundary
 
@@ -74,9 +91,11 @@ NFC credential
   → Magento customer token (server memory only)
   → fresh GraphQL customer/company context
   → opaque HttpOnly css_kiosk_session cookie
+  → trusted catalogue API
+  → Magento GraphQL catalogue
 ```
 
-The browser never receives the Magento customer token. The RSA private key remains outside the repository on the kiosk application host; Magento receives only the corresponding public key.
+The RSA private key remains outside the repository on the kiosk application host; Magento receives only the corresponding public key.
 
 See:
 
