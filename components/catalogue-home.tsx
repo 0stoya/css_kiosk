@@ -109,20 +109,17 @@ export function CatalogueHome({
   const companyReference = customer.company?.reference || null;
 
   const loadCatalogue = useCallback(
-    async (input?: { search?: string; categoryUid?: string }) => {
+    async (input: { search: string; categoryUid: string }) => {
       setLoading(true);
       setError(null);
-
-      const search = input?.search ?? activeSearch;
-      const categoryUid = input?.categoryUid ?? activeCategoryUid;
 
       try {
         const response = await signedFetch("/api/catalogue", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            search: search || undefined,
-            categoryUid: categoryUid || undefined,
+            search: input.search || undefined,
+            categoryUid: input.categoryUid || undefined,
             page: 1,
           }),
         });
@@ -147,7 +144,8 @@ export function CatalogueHome({
       } finally {
         setLoading(false);
       }
-    }, [activeCategoryUid, activeSearch, onSessionExpired, signedFetch],
+    },
+    [onSessionExpired, signedFetch],
   );
 
   useEffect(() => {
@@ -255,7 +253,12 @@ export function CatalogueHome({
         <div className={styles.errorPanel} role="alert">
           <strong>Catalogue unavailable</strong>
           <span>{error}</span>
-          <button type="button" onClick={() => void loadCatalogue()}>Try again</button>
+          <button
+            type="button"
+            onClick={() => void loadCatalogue({ search: activeSearch, categoryUid: activeCategoryUid })}
+          >
+            Try again
+          </button>
         </div>
       ) : null}
 
