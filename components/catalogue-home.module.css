@@ -102,12 +102,13 @@
   align-items: center;
   gap: 9px;
   padding: 14px 16px;
-  border: 2px solid #c9d6e0;
+  border: 2px solid #9fbfd8;
   border-radius: 17px;
-  background: #f5f8fb;
-  color: #6d8193;
+  background: #f5faff;
+  color: var(--css-primary);
   font-size: 18px;
   font-weight: 900;
+  cursor: pointer;
 }
 
 .basketButton svg,
@@ -127,7 +128,7 @@
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: #dfe7ee;
+  background: #dcecf8;
   font-size: 15px;
 }
 
@@ -297,7 +298,7 @@
   min-height: 205px;
   padding: 20px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   gap: 10px;
 }
 
@@ -363,6 +364,17 @@
   color: #9a4b00;
 }
 
+.productAction {
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 2px solid var(--css-primary);
+  border-radius: 13px;
+  background: white;
+  color: var(--css-primary);
+  font-size: 17px;
+  font-weight: 900;
+}
+
 .errorPanel,
 .emptyPanel {
   min-height: 230px;
@@ -413,6 +425,354 @@
   text-align: center;
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 34px;
+  background: rgb(0 35 72 / 46%);
+  backdrop-filter: blur(4px);
+}
+
+.detailPanel,
+.basketPanel {
+  width: min(920px, 100%);
+  max-height: calc(100svh - 68px);
+  position: relative;
+  overflow: auto;
+  border: 1px solid var(--css-border);
+  border-top: 7px solid var(--css-secondary);
+  border-radius: 26px;
+  background: white;
+  box-shadow: 0 36px 100px rgb(0 35 72 / 28%);
+}
+
+.detailPanel {
+  display: grid;
+  grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr);
+}
+
+.closeButton {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #a9bdcc;
+  border-radius: 999px;
+  background: white;
+  color: var(--css-text);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  z-index: 2;
+}
+
+.detailPanel > .closeButton {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+
+.detailImage {
+  min-height: 520px;
+  display: grid;
+  place-items: center;
+  background: #f5f8fb no-repeat center / contain;
+  border-right: 1px solid var(--css-border);
+}
+
+.detailImage > span,
+.basketLineImage > span {
+  width: 100px;
+  height: 100px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  background: #e4eff8;
+  color: var(--css-primary);
+  font-family: var(--font-secondary);
+  font-size: 46px;
+  font-weight: 900;
+}
+
+.detailBody {
+  padding: 72px 34px 34px;
+  display: grid;
+  align-content: center;
+  gap: 22px;
+}
+
+.detailBody h2,
+.basketHeader h2 {
+  margin: 0;
+  font-family: var(--font-secondary);
+  color: var(--css-text);
+}
+
+.detailBody h2 {
+  font-size: 34px;
+  line-height: 1.15;
+}
+
+.detailPriceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detailPriceRow > strong {
+  color: var(--css-primary);
+  font-family: var(--font-secondary);
+  font-size: 32px;
+}
+
+.productTypeNote {
+  margin: 0;
+  color: var(--css-muted);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.addControls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+}
+
+.quantityControl {
+  display: grid;
+  grid-template-columns: 58px 64px 58px;
+  align-items: center;
+  border: 2px solid #b4c5d2;
+  border-radius: 15px;
+  overflow: hidden;
+  background: white;
+}
+
+.quantityControl button {
+  min-height: 58px;
+  border: 0;
+  background: #f2f6f9;
+  color: var(--css-primary);
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.quantityControl button:disabled {
+  color: #9caab6;
+  opacity: .6;
+}
+
+.quantityControl output {
+  min-width: 0;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.addButton,
+.checkoutButton {
+  min-height: 62px;
+  padding: 12px 20px;
+  border: 2px solid var(--css-primary);
+  border-radius: 15px;
+  background: var(--css-primary);
+  color: white;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.addButton:disabled,
+.checkoutButton:disabled {
+  opacity: .55;
+}
+
+.optionNotice,
+.basketInlineError {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: 14px;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.optionNotice {
+  background: #fff8e6;
+  color: #795700;
+}
+
+.basketInlineError {
+  border: 1px solid #f2b8b5;
+  background: #fff1f0;
+  color: var(--css-danger);
+}
+
+.basketPanel {
+  padding: 28px;
+  display: grid;
+  gap: 22px;
+}
+
+.basketHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.basketHeader > div {
+  display: grid;
+  gap: 5px;
+}
+
+.basketHeader h2 {
+  font-size: 36px;
+}
+
+.basketEmpty {
+  min-height: 220px;
+  padding: 30px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  border: 1px dashed #b9c8d4;
+  border-radius: 18px;
+  background: #f8fafc;
+  color: var(--css-muted);
+  text-align: center;
+  font-size: 18px;
+}
+
+.basketEmpty strong {
+  color: var(--css-text);
+  font-family: var(--font-secondary);
+  font-size: 25px;
+}
+
+.basketLines {
+  display: grid;
+  gap: 14px;
+}
+
+.basketLine {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  overflow: hidden;
+  border: 1px solid var(--css-border);
+  border-radius: 18px;
+  background: white;
+}
+
+.basketLineImage {
+  min-height: 168px;
+  display: grid;
+  place-items: center;
+  background: #f5f8fb no-repeat center / contain;
+  border-right: 1px solid var(--css-border);
+}
+
+.basketLineImage > span {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  font-size: 30px;
+}
+
+.basketLineBody {
+  min-width: 0;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 16px;
+  align-items: center;
+}
+
+.basketLineBody > .sku,
+.basketLineBody > strong {
+  grid-column: 1;
+}
+
+.basketLineBody > strong {
+  overflow: hidden;
+  font-family: var(--font-secondary);
+  font-size: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.basketLinePrice {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  color: var(--css-primary);
+  font-family: var(--font-secondary);
+  font-size: 21px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.basketLineActions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.basketLineActions .quantityControl {
+  grid-template-columns: 52px 58px 52px;
+}
+
+.basketLineActions .quantityControl button {
+  min-height: 52px;
+}
+
+.removeButton {
+  min-height: 52px;
+  padding: 10px 16px;
+  border: 2px solid #d0a4a0;
+  border-radius: 13px;
+  background: white;
+  color: var(--css-danger);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.basketFooter {
+  display: grid;
+  gap: 18px;
+  padding-top: 6px;
+  border-top: 1px solid var(--css-border);
+}
+
+.totalRows {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.totalRows > span {
+  padding: 16px 18px;
+  display: grid;
+  gap: 5px;
+  border-radius: 14px;
+  background: #f3f7fa;
+}
+
+.totalRows small {
+  color: var(--css-muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.totalRows strong {
+  font-family: var(--font-secondary);
+  font-size: 24px;
+}
+
 @media (max-width: 760px) {
   .catalogueShell {
     gap: 18px;
@@ -445,5 +805,54 @@
 
   .searchForm button {
     grid-column: 1 / -1;
+  }
+
+  .modalBackdrop {
+    padding: 14px;
+  }
+
+  .detailPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .detailImage {
+    min-height: 300px;
+    border-right: 0;
+    border-bottom: 1px solid var(--css-border);
+  }
+
+  .detailBody {
+    padding: 26px;
+  }
+
+  .addControls,
+  .totalRows {
+    grid-template-columns: 1fr;
+  }
+
+  .quantityControl {
+    justify-self: start;
+  }
+
+  .basketPanel {
+    padding: 20px;
+  }
+
+  .basketLine {
+    grid-template-columns: 100px 1fr;
+  }
+
+  .basketLineBody {
+    grid-template-columns: 1fr;
+  }
+
+  .basketLinePrice {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .basketLineActions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
