@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const ASSERTION_TTL_SECONDS = 60;
 const DEFAULT_KEY_ID = "css-kiosk-v1";
 const ISSUER = "css-kiosk";
-const AUDIENCE = "css-magento";
+const AUDIENCE = "css-commerce";
 const PURPOSE = "customer_session";
 
 let privateKey: ReturnType<typeof createPrivateKey> | null = null;
@@ -24,7 +24,7 @@ function assertionKey() {
   privateKey = createPrivateKey(readFileSync(path));
   if (privateKey.asymmetricKeyType !== "rsa") {
     privateKey = null;
-    throw new Error("Magento kiosk assertion key must be a standard RSA private key.");
+    throw new Error("CSS Commerce kiosk assertion key must be a standard RSA private key.");
   }
 
   return privateKey;
@@ -39,7 +39,7 @@ export function createMagentoKioskAssertion(input: {
   }
 
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(input.deviceId)) {
-    throw new Error("Invalid kiosk device ID for Magento assertion.");
+    throw new Error("Invalid kiosk device ID for CSS Commerce assertion.");
   }
 
   const now = Math.floor(Date.now() / 1000);
