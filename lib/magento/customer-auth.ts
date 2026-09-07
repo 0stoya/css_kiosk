@@ -2,7 +2,6 @@ import { getMagentoConfig } from "@/lib/config";
 
 export type MagentoCustomerAuthErrorCode =
   | "INVALID_CREDENTIALS"
-  | "SECOND_FACTOR_REQUIRED"
   | "SERVICE_UNAVAILABLE"
   | "INVALID_RESPONSE";
 
@@ -17,60 +16,18 @@ export class MagentoCustomerAuthError extends Error {
   }
 }
 
-const CUSTOMER_PASSWORD_LOGIN_MUTATION = /* GraphQL */ `
-  mutation KioskCustomerPasswordLogin($input: OstoyaCustomerPasswordLoginInput!) {
-    ostoya_customer_password_login(input: $input) {
-      status
+const GENERATE_CUSTOMER_TOKEN_MUTATION = /* GraphQL */ `
+  mutation KioskGenerateCustomerToken($email: String!, $password: String!) {
+    generateCustomerToken(email: $email, password: $password) {
       token
-      customer_id
-      customer_email
-      requires_second_factor
-      challenge_id
-      message
     }
   }
 `;
 
-type LoginPayload = {
-  status?: string;
-  token?: string | null;
-  customer_id?: number | null;
-  customer_email?: string | null;
-  requires_second_factor?: boolean;
-  challenge_id?: string | null;
-  message?: string | null;
-};
-
 type LoginResponse = {
-  data?: { ostoya_customer_password_login?: LoginPayload | null };
+  data?: { generateCustomerToken?: { token?: string | null } | null };
   errors?: Array<{ message?: string }>;
 };
-
-function authFailureFromGraphQl(body: LoginResponse): MagentoCustomerAuthError {
-  const message = body.errors?.map((item) => item.message || "").join(" ").toLowerCase() || "";
-
-  if (message.includes("second factor") || message.includes("verification code")) {
-    return new MagentoCustomerAuthError(
-      "This account requires a verification code before it can be linked to a kiosk card.",
-      "SECOND_FACTOR_REQUIRED",
-      401,
-    );
-  }
-
-  if (message.includes("password login is disabled")) {
-    return new MagentoCustomerAuthError(
-      "Password sign in is not available for this account.",
-      "SECOND_FACTOR_REQUIRED",
-      401,
-    );
-  }
-
-  return new MagentoCustomerAuthError(
-    "Email address or password was not recognised. Please try again.",
-    "INVALID_CREDENTIALS",
-    401,
-  );
-}
 
 export async function requestMagentoCustomerToken(email: string, password: string) {
   const { graphqlUrl, storeCode } = getMagentoConfig();
@@ -84,8 +41,8 @@ export async function requestMagentoCustomerToken(email: string, password: strin
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        query: CUSTOMER_PASSWORD_LOGIN_MUTATION,
-        variables: { input: { email, password } },
+        query: GENERATE_CUSTOMER_TOKEN_MUTATION,
+        variables: { email, password },
       }),
       cache: "no-store",
     });
@@ -117,27 +74,14 @@ export async function requestMagentoCustomerToken(email: string, password: strin
   }
 
   if (body.errors?.length) {
-    throw authFailureFromGraphQl(body);
-  }
-
-  const login = body.data?.ostoya_customer_password_login;
-  if (!login) {
     throw new MagentoCustomerAuthError(
-      "The customer account service returned an invalid response.",
-      "INVALID_RESPONSE",
-      502,
-    );
-  }
-
-  if (login.requires_second_factor || login.status !== "AUTHENTICATED") {
-    throw new MagentoCustomerAuthError(
-      login.message?.trim() || "This account requires a verification code before it can be linked to a kiosk card.",
-      "SECOND_FACTOR_REQUIRED",
+      "Email address or password was not recognised. Please try again.",
+      "INVALID_CREDENTIALS",
       401,
     );
   }
 
-  const token = login.token?.trim() || "";
+  const token = body.data?.generateCustomerToken?.token?.trim() || "";
   if (token.length < 16) {
     throw new MagentoCustomerAuthError(
       "The customer account service returned an invalid response.",
