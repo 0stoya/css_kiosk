@@ -7,6 +7,7 @@ import { getKioskSessionId } from "@/lib/kiosk/session-cookie";
 import { getKioskSession } from "@/lib/kiosk/session-store";
 import {
   addAuthenticatedBasketItem,
+  addAuthenticatedGroupedBasketItems,
   getAuthenticatedBasket,
   MagentoCartError,
   removeAuthenticatedBasketItem,
@@ -15,7 +16,7 @@ import {
 
 export const runtime = "nodejs";
 
-type CartAction = "get" | "add" | "update" | "remove";
+type CartAction = "get" | "add" | "add_grouped" | "update" | "remove";
 
 type CartRequest = {
   action?: unknown;
@@ -23,6 +24,7 @@ type CartRequest = {
   quantity?: unknown;
   itemUid?: unknown;
   selectedOptions?: unknown;
+  items?: unknown;
 };
 
 function deviceFailure(error: unknown) {
@@ -44,7 +46,13 @@ function deviceFailure(error: unknown) {
 }
 
 function validAction(value: unknown): value is CartAction {
-  return value === "get" || value === "add" || value === "update" || value === "remove";
+  return (
+    value === "get" ||
+    value === "add" ||
+    value === "add_grouped" ||
+    value === "update" ||
+    value === "remove"
+  );
 }
 
 function selectedOptions(value: unknown) {
@@ -60,6 +68,33 @@ function selectedOptions(value: unknown) {
   }
 
   return [...new Set(options)];
+}
+
+function groupedItems(value: unknown) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 50) return null;
+
+  const items: Array<{ sku: string; quantity: number }> = [];
+  const seen = new Set<string>();
+
+  for (const row of value) {
+    if (!row || typeof row !== "object") return null;
+    const skuValue = "sku" in row ? row.sku : undefined;
+    const quantityValue = "quantity" in row ? row.quantity : undefined;
+    const sku = typeof skuValue === "string" ? skuValue.trim() : "";
+    const quantity =
+      typeof quantityValue === "number" && Number.isInteger(quantityValue)
+        ? quantityValue
+        : 0;
+
+    if (!sku || sku.length > 160 || quantity < 1 || quantity > 999 || seen.has(sku)) {
+      return null;
+    }
+
+    seen.add(sku);
+    items.push({ sku, quantity });
+  }
+
+  return items;
 }
 
 export async function POST(request: Request) {
@@ -98,9 +133,11 @@ export async function POST(request: Request) {
       ? payload.quantity
       : 0;
   const optionUids = selectedOptions(payload.selectedOptions);
+  const grouped = payload.action === "add_grouped" ? groupedItems(payload.items) : [];
 
   if (
     optionUids === null ||
+    grouped === null ||
     sku.length > 160 ||
     itemUid.length > 256 ||
     ((payload.action === "add" || payload.action === "update") && (quantity < 1 || quantity > 999)) ||
@@ -122,6 +159,11 @@ export async function POST(request: Request) {
         sku,
         quantity,
         selectedOptions: optionUids,
+      });
+    } else if (payload.action === "add_grouped") {
+      basket = await addAuthenticatedGroupedBasketItems({
+        token: session.magentoToken,
+        items: grouped,
       });
     } else if (payload.action === "update") {
       basket = await updateAuthenticatedBasketItem({
