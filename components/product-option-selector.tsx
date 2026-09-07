@@ -4,12 +4,15 @@ import type { KioskProductOptions } from "@/lib/magento/product-options";
 import styles from "./product-option-selector.module.css";
 
 type SelectionMap = Record<string, string[]>;
+type GroupedQuantityMap = Record<string, number>;
 
 type ProductOptionSelectorProps = {
   product: KioskProductOptions;
   selections: SelectionMap;
+  groupedQuantities?: GroupedQuantityMap;
   disabled?: boolean;
   onChange: (selections: SelectionMap) => void;
+  onGroupedQuantityChange?: (quantities: GroupedQuantityMap) => void;
 };
 
 function selected(selections: SelectionMap, groupUid: string, choiceUid: string) {
@@ -19,8 +22,10 @@ function selected(selections: SelectionMap, groupUid: string, choiceUid: string)
 export function ProductOptionSelector({
   product,
   selections,
+  groupedQuantities = {},
   disabled = false,
   onChange,
+  onGroupedQuantityChange,
 }: ProductOptionSelectorProps) {
   function chooseSingle(groupUid: string, choiceUid: string) {
     onChange({ ...selections, [groupUid]: [choiceUid] });
@@ -32,6 +37,13 @@ export function ProductOptionSelector({
       ? current.filter((uid) => uid !== choiceUid)
       : [...current, choiceUid];
     onChange({ ...selections, [groupUid]: next });
+  }
+
+  function changeGroupedQuantity(sku: string, quantity: number) {
+    onGroupedQuantityChange?.({
+      ...groupedQuantities,
+      [sku]: Math.max(0, Math.min(999, Math.trunc(quantity))),
+    });
   }
 
   if (product.productType === "ConfigurableProduct") {
@@ -110,6 +122,52 @@ export function ProductOptionSelector({
     );
   }
 
+  if (product.productType === "GroupedProduct") {
+    return (
+      <div className={styles.stack}>
+        <fieldset className={styles.group}>
+          <legend>
+            Choose quantities
+            <span>Select one or more</span>
+          </legend>
+          <div className={styles.groupedList}>
+            {product.groupedItems.map((item) => {
+              const unavailable = item.stockStatus === "OUT_OF_STOCK";
+              const quantity = groupedQuantities[item.sku] || 0;
+              return (
+                <div className={styles.groupedRow} key={item.sku}>
+                  <div className={styles.groupedProduct}>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {item.sku} · {unavailable ? "Out of stock" : "Available"}
+                    </small>
+                  </div>
+                  <div className={styles.groupedQuantity} aria-label={`Quantity for ${item.name}`}>
+                    <button
+                      type="button"
+                      onClick={() => changeGroupedQuantity(item.sku, quantity - 1)}
+                      disabled={disabled || unavailable || quantity <= 0}
+                    >
+                      −
+                    </button>
+                    <output>{quantity}</output>
+                    <button
+                      type="button"
+                      onClick={() => changeGroupedQuantity(item.sku, quantity + 1)}
+                      disabled={disabled || unavailable || quantity >= 999}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </fieldset>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -125,6 +183,11 @@ export function defaultProductSelections(product: KioskProductOptions): Selectio
       })
       .filter(([, values]) => values.length > 0),
   );
+}
+
+export function defaultGroupedQuantities(product: KioskProductOptions): GroupedQuantityMap {
+  if (product.productType !== "GroupedProduct") return {};
+  return Object.fromEntries(product.groupedItems.map((item) => [item.sku, 0]));
 }
 
 export function productSelectionsComplete(
@@ -150,6 +213,30 @@ export function productSelectionsComplete(
   return true;
 }
 
+export function groupedSelectionsComplete(
+  product: KioskProductOptions,
+  quantities: GroupedQuantityMap,
+) {
+  return (
+    product.productType === "GroupedProduct" &&
+    product.groupedItems.some(
+      (item) => item.stockStatus !== "OUT_OF_STOCK" && (quantities[item.sku] || 0) > 0,
+    )
+  );
+}
+
 export function selectedProductOptionUids(selections: SelectionMap) {
   return [...new Set(Object.values(selections).flat())];
+}
+
+export function selectedGroupedBasketItems(
+  product: KioskProductOptions,
+  quantities: GroupedQuantityMap,
+) {
+  if (product.productType !== "GroupedProduct") return [];
+
+  return product.groupedItems
+    .filter((item) => item.stockStatus !== "OUT_OF_STOCK")
+    .map((item) => ({ sku: item.sku, quantity: quantities[item.sku] || 0 }))
+    .filter((item) => item.quantity > 0);
 }
