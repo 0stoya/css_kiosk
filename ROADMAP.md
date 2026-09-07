@@ -8,11 +8,12 @@ Build a portrait, Android-first trade-counter kiosk for the TouchWo GD238C. Cust
 
 ## Non-negotiable Magento boundary
 
-All kiosk customer authentication/session traffic to Magento is **GraphQL only**.
+All kiosk customer authentication/session/catalogue traffic to Magento is **GraphQL only**.
 
 - first-time login: `generateCustomerToken`
 - returning-card exchange: `css_kiosk_customer_session`
 - fresh customer/company context: `customer` + `css_company_context`
+- authenticated catalogue: `categoryList` + `products`
 - logout/token revocation: `revokeCustomerToken`
 
 The deployed Commerce-side implementation belongs only to `0stoya/Fluid/Css/Commerce`. Do not introduce a kiosk-specific Magento REST endpoint or depend on any other Magento repository.
@@ -108,29 +109,47 @@ linked NFC fixture
 
 ## K1 — authenticated customer home and catalogue entry
 
-Status: next slice
+Status: implemented on `feat/authenticated-catalogue-home`; live runtime acceptance pending
 
 The existing `css_kiosk_session` is already authenticated. K1 makes `Continue` use it for customer-facing commerce rather than creating a second browser authentication mechanism.
 
-- [ ] `Continue` enters authenticated customer home/catalogue
-- [ ] server resolves `css_kiosk_session` and uses its server-held Magento customer token
-- [ ] no Magento bearer token in browser responses, localStorage, sessionStorage or client JavaScript
-- [ ] customer/company identity remains visible throughout the catalogue journey
-- [ ] company branding/context where appropriate
-- [ ] trade catalogue entry
-- [ ] search
-- [ ] category navigation
+- [x] `Continue` enters authenticated customer home/catalogue
+- [x] trusted `/api/catalogue` resolves the signed kiosk device and existing `css_kiosk_session`
+- [x] server uses only the session-held Magento customer token for catalogue GraphQL
+- [x] no Magento bearer token in browser responses, localStorage, sessionStorage or client JavaScript
+- [x] customer/company identity remains visible throughout the catalogue journey
+- [x] trade catalogue landing screen
+- [x] live GraphQL product search
+- [x] top-level category navigation using Magento category UIDs
+- [x] customer-authorized price and stock fields returned from Magento GraphQL
+- [x] clear signed-in identity and sign-out from catalogue
+- [x] expired/missing kiosk session fails closed and returns to NFC authentication path
+- [x] touch-first loading, empty and catalogue-unavailable states
+- [ ] live accept catalogue load/search/category against EAL001
+- [ ] verify expected customer/company pricing with a known product against Magento storefront/admin evidence
+- [ ] company-specific branding beyond the current company/account identity
 - [ ] favourites / common purchases foundation
-- [ ] clear signed-in identity and sign-out everywhere
-- [ ] expired/missing kiosk session returns safely to NFC authentication
+
+### K1 request boundary
+
+```text
+browser
+  → signed kiosk-device request + HttpOnly css_kiosk_session
+  → css_kiosk /api/catalogue
+  → resolve in-memory kiosk session
+  → Magento bearer token stays server-side
+  → HTTPS GraphQL categoryList + products
+  → safe catalogue/category/price/stock data only
+  → browser
+```
 
 ## K2 — catalogue and basket
 
-- product search and filtering
-- company product visibility
-- customer/company pricing
-- stock/availability presentation
-- touch-first product detail
+- product detail
+- deeper filtering / pagination
+- verified company product visibility
+- verified customer/company pricing
+- detailed stock/availability presentation
 - basket
 - quantity controls suitable for gloves/touchscreen use
 
@@ -172,5 +191,6 @@ Exact scope to be agreed after Magento order and counter workflows are inspected
 9. Production NFC trust decisions belong to the server, not browser state.
 10. Production kiosk devices use asymmetric signing; only the public key is stored server-side.
 11. Magento customer tokens stay server-side and are never returned to kiosk browser JavaScript.
-12. Magento customer authentication/session transport is GraphQL only.
+12. Magento customer authentication/session/catalogue transport is GraphQL only.
 13. The RSA private assertion key stays outside source control and outside Magento; Magento stores only the public key.
+14. Browser catalogue requests must be both trusted-device signed and bound to the opaque kiosk session.
