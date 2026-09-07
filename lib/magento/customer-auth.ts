@@ -16,15 +16,34 @@ export class MagentoCustomerAuthError extends Error {
   }
 }
 
+const GENERATE_CUSTOMER_TOKEN_MUTATION = /* GraphQL */ `
+  mutation KioskGenerateCustomerToken($email: String!, $password: String!) {
+    generateCustomerToken(email: $email, password: $password) {
+      token
+    }
+  }
+`;
+
+type LoginResponse = {
+  data?: { generateCustomerToken?: { token?: string | null } | null };
+  errors?: Array<{ message?: string }>;
+};
+
 export async function requestMagentoCustomerToken(email: string, password: string) {
-  const { customerTokenUrl } = getMagentoConfig();
+  const { graphqlUrl, storeCode } = getMagentoConfig();
 
   let response: Response;
   try {
-    response = await fetch(customerTokenUrl, {
+    response = await fetch(graphqlUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: email, password }),
+      headers: {
+        Store: storeCode,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: GENERATE_CUSTOMER_TOKEN_MUTATION,
+        variables: { email, password },
+      }),
       cache: "no-store",
     });
   } catch {
@@ -36,14 +55,6 @@ export async function requestMagentoCustomerToken(email: string, password: strin
   }
 
   if (!response.ok) {
-    if (response.status === 400 || response.status === 401) {
-      throw new MagentoCustomerAuthError(
-        "Email address or password was not recognised. Please try again.",
-        "INVALID_CREDENTIALS",
-        401,
-      );
-    }
-
     throw new MagentoCustomerAuthError(
       "We cannot reach the customer account service right now. Please try again shortly.",
       "SERVICE_UNAVAILABLE",
@@ -51,9 +62,9 @@ export async function requestMagentoCustomerToken(email: string, password: strin
     );
   }
 
-  let token: unknown;
+  let body: LoginResponse;
   try {
-    token = await response.json();
+    body = (await response.json()) as LoginResponse;
   } catch {
     throw new MagentoCustomerAuthError(
       "The customer account service returned an invalid response.",
@@ -62,7 +73,16 @@ export async function requestMagentoCustomerToken(email: string, password: strin
     );
   }
 
-  if (typeof token !== "string" || !token.trim()) {
+  if (body.errors?.length) {
+    throw new MagentoCustomerAuthError(
+      "Email address or password was not recognised. Please try again.",
+      "INVALID_CREDENTIALS",
+      401,
+    );
+  }
+
+  const token = body.data?.generateCustomerToken?.token?.trim() || "";
+  if (token.length < 16) {
     throw new MagentoCustomerAuthError(
       "The customer account service returned an invalid response.",
       "INVALID_RESPONSE",

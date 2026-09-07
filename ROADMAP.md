@@ -30,8 +30,10 @@ Status: in progress
 - [ ] accept a real Magento account link against the persistent simulated card and confirm it survives restart
 - [x] define signed kiosk device registration/trust model using ECDSA P-256 public keys
 - [x] development simulator exercises signed device requests and nonce replay protection
-- [ ] accept signed device trust against the simulator regression matrix
-- [ ] define trusted kiosk-to-Magento authenticated session exchange for subsequent card taps
+- [x] signed device trust accepted against the simulator fail-closed check
+- [x] define trusted kiosk-to-Magento authenticated session exchange for subsequent card taps
+- [x] implement server-side RS256 assertion + Magento exchange client + opaque 15-minute kiosk session
+- [ ] accept the authenticated returning-card session against live Magento
 - [ ] implement inactivity session reset
 - [ ] implement offline / degraded-network state
 - [ ] inspect TouchWo GD238C Android version, SoC, NFC hardware/API and browser/WebView capabilities
@@ -51,6 +53,10 @@ Status: in progress
 - Protected NFC/customer routes require a signed active kiosk device identity.
 - Device request signatures cover method, path, timestamp, nonce and exact body hash; nonces are single-use.
 - Production stores only the device public key; the future Android private key stays in Android Keystore.
+- Returning linked cards require a fresh one-use server assertion before Magento issues a customer token.
+- Magento token remains server-side; the browser receives only an opaque HttpOnly kiosk session ID and safe customer/session metadata.
+- A fresh Magento customer/company lookup must still match the linked NFC context before the kiosk session is created.
+- Replacing/signing out a kiosk session destroys the in-memory session and revokes its Magento token best-effort.
 - No password, Magento token or reusable customer credential is persisted client-side.
 
 ## K1 — authenticated customer home
@@ -110,3 +116,4 @@ Exact scope to be agreed after Magento order and counter workflows are inspected
 8. The kiosk device must never contain Magento Admin credentials.
 9. Production NFC trust decisions belong to the server, not browser state.
 10. Production kiosk devices use asymmetric signing; only the public key is stored server-side.
+11. Magento customer tokens stay server-side and are never returned to kiosk browser JavaScript.

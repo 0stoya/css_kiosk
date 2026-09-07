@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  AuthenticatedKioskSessionError,
+  establishAuthenticatedKioskSession,
+} from "@/lib/kiosk/authenticated-session";
+import {
   cancelPendingNfcLink,
   confirmPendingNfcLink,
   NfcCredentialStoreError,
@@ -12,6 +16,12 @@ import {
   clearPendingLinkProof,
   getPendingLinkProof,
 } from "@/lib/kiosk/pending-link-cookie";
+import {
+  clearKioskSessionId,
+  getKioskSessionId,
+} from "@/lib/kiosk/session-cookie";
+import { destroyKioskSession } from "@/lib/kiosk/session-store";
+import { revokeMagentoCustomerToken } from "@/lib/magento/revoke-customer-token";
 
 export const runtime = "nodejs";
 
@@ -30,8 +40,9 @@ function deviceFailure(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let device;
   try {
-    await verifyTrustedRequest(request);
+    device = await verifyTrustedRequest(request);
   } catch (error) {
     return deviceFailure(error);
   }
@@ -45,13 +56,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const customer = confirmPendingNfcLink(proof);
+    const linkedCustomer = confirmPendingNfcLink(proof);
     await clearPendingLinkProof();
-    return NextResponse.json({ ok: true, customer });
+
+    const authenticated = await establishAuthenticatedKioskSession({
+      deviceId: device.deviceId,
+      linkedCustomer,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      customer: authenticated.customer,
+      session: authenticated.session,
+    });
   } catch (error) {
     await clearPendingLinkProof();
 
     if (error instanceof NfcCredentialStoreError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+
+    if (error instanceof AuthenticatedKioskSessionError) {
       return NextResponse.json(
         { ok: false, code: error.code, error: error.message },
         { status: error.status },
@@ -66,18 +94,26 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  let device;
   try {
-    await verifyTrustedRequest(request);
+    device = await verifyTrustedRequest(request);
   } catch (error) {
     return deviceFailure(error);
   }
 
   const proof = await getPendingLinkProof();
+  const sessionId = await getKioskSessionId();
 
   try {
     if (proof) cancelPendingNfcLink(proof);
+
+    const session = sessionId ? destroyKioskSession(sessionId, device.deviceId) : null;
+    if (session) {
+      await revokeMagentoCustomerToken(session.magentoToken).catch(() => false);
+    }
   } finally {
     await clearPendingLinkProof();
+    await clearKioskSessionId();
   }
 
   return NextResponse.json({ ok: true });
