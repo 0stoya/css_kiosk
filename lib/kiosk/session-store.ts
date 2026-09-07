@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
+import { revokeMagentoCustomerToken } from "@/lib/magento/revoke-customer-token";
 
 const SESSION_TTL_MS = 15 * 60 * 1000;
 
@@ -12,23 +13,40 @@ export type KioskSession = {
 };
 
 type KioskSessionRegistry = Map<string, KioskSession>;
+type KioskSessionTimerRegistry = Map<string, ReturnType<typeof setTimeout>>;
 
 type KioskGlobal = typeof globalThis & {
   __cssKioskSessions?: KioskSessionRegistry;
+  __cssKioskSessionTimers?: KioskSessionTimerRegistry;
 };
 
 const kioskGlobal = globalThis as KioskGlobal;
 const sessions = kioskGlobal.__cssKioskSessions ?? new Map<string, KioskSession>();
+const timers = kioskGlobal.__cssKioskSessionTimers ?? new Map<string, ReturnType<typeof setTimeout>>();
 kioskGlobal.__cssKioskSessions = sessions;
+kioskGlobal.__cssKioskSessionTimers = timers;
 
 function sessionHash(sessionId: string) {
   return createHash("sha256").update(`kiosk-session\u0000${sessionId}`).digest("hex");
 }
 
+function expireSession(key: string) {
+  const session = sessions.get(key) ?? null;
+  sessions.delete(key);
+
+  const timer = timers.get(key);
+  if (timer) clearTimeout(timer);
+  timers.delete(key);
+
+  if (session) {
+    void revokeMagentoCustomerToken(session.magentoToken).catch(() => false);
+  }
+}
+
 function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [key, session] of sessions) {
-    if (Date.parse(session.expiresAt) <= now) sessions.delete(key);
+    if (Date.parse(session.expiresAt) <= now) expireSession(key);
   }
 }
 
@@ -50,7 +68,11 @@ export function createKioskSession(input: {
     expiresAt: expiresAt.toISOString(),
   };
 
-  sessions.set(sessionHash(sessionId), session);
+  const key = sessionHash(sessionId);
+  sessions.set(key, session);
+  const timer = setTimeout(() => expireSession(key), SESSION_TTL_MS);
+  timer.unref?.();
+  timers.set(key, timer);
 
   return { sessionId, session };
 }
@@ -73,5 +95,9 @@ export function destroyKioskSession(sessionId: string, deviceId: string) {
   if (!session || session.deviceId !== deviceId) return null;
 
   sessions.delete(key);
+  const timer = timers.get(key);
+  if (timer) clearTimeout(timer);
+  timers.delete(key);
+
   return session;
 }
