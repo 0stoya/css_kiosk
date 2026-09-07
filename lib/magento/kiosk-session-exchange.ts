@@ -9,13 +9,13 @@ export class MagentoKioskSessionError extends Error {
 
 const KIOSK_CUSTOMER_SESSION_MUTATION = /* GraphQL */ `
   mutation KioskCustomerSession($assertion: String!) {
-    ostoya_kiosk_customer_session(assertion: $assertion)
+    css_kiosk_customer_session(assertion: $assertion)
   }
 `;
 
 type KioskSessionResponse = {
   data?: {
-    ostoya_kiosk_customer_session?: string | null;
+    css_kiosk_customer_session?: string | null;
   };
   errors?: Array<{ message?: string }>;
 };
@@ -68,7 +68,7 @@ export async function exchangeMagentoKioskAssertion(assertion: string) {
     );
   }
 
-  const token = body.data?.ostoya_kiosk_customer_session?.trim() || "";
+  const token = body.data?.css_kiosk_customer_session?.trim() || "";
   if (token.length < 16) {
     throw new MagentoKioskSessionError(
       "Customer session service returned an invalid response.",
