@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  AuthenticatedKioskSessionError,
+  establishAuthenticatedKioskSession,
+} from "@/lib/kiosk/authenticated-session";
+import {
   NfcCredentialStoreError,
   parseNfcCredential,
   resolveNfcCredential,
@@ -14,9 +18,10 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   let payload: { credential?: unknown };
+  let device;
 
   try {
-    ({ payload } = await readTrustedJsonRequest<{ credential?: unknown }>(request));
+    ({ payload, device } = await readTrustedJsonRequest<{ credential?: unknown }>(request));
   } catch (error) {
     if (error instanceof KioskDeviceRequestError) {
       return NextResponse.json(
@@ -38,8 +43,23 @@ export async function POST(request: Request) {
 
   try {
     const stored = resolveNfcCredential(credential);
-    if (stored.status !== "unregistered") {
-      return NextResponse.json({ ok: true, ...stored });
+
+    if (stored.status === "registered") {
+      const authenticated = await establishAuthenticatedKioskSession({
+        deviceId: device.deviceId,
+        linkedCustomer: stored.customer,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        status: "registered",
+        customer: authenticated.customer,
+        session: authenticated.session,
+      });
+    }
+
+    if (stored.status === "revoked") {
+      return NextResponse.json({ ok: true, status: "revoked" });
     }
 
     const fixture = resolveDevelopmentFixture(credential);
@@ -50,6 +70,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, status: "unregistered" });
   } catch (error) {
     if (error instanceof NfcCredentialStoreError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+
+    if (error instanceof AuthenticatedKioskSessionError) {
       return NextResponse.json(
         { ok: false, code: error.code, error: error.message },
         { status: error.status },
