@@ -1,7 +1,7 @@
 import type { NfcCredential, NfcErrorHandler, NfcReadHandler, NfcReader } from "@/lib/kiosk/nfc-reader";
 
 export type SimulatedCardFixture = "registered" | "unregistered" | "revoked" | "read-error";
-export type SimulatedMagentoResult = "success" | "invalid-credentials" | "unavailable";
+export type SimulatedMagentoResult = "real" | "success" | "invalid-credentials" | "unavailable";
 export type SimulatedCardOutcome = "registered" | "unregistered" | "revoked";
 
 const simulatedCredentials: Record<Exclude<SimulatedCardFixture, "read-error">, NfcCredential> = {
