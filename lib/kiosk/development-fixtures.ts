@@ -24,18 +24,22 @@ export const simulatedRegisteredCustomer: VerifiedKioskCustomer = {
   companies: [company],
 };
 
+function matches(credential: NfcCredential, fixture: NfcCredential) {
+  return credential.type === fixture.type && credential.value === fixture.value;
+}
+
 export function resolveDevelopmentFixture(credential: NfcCredential) {
   if (process.env.NODE_ENV === "production") return null;
 
-  if (credential.value === SIMULATED_NFC_CREDENTIALS.registered.value) {
+  if (matches(credential, SIMULATED_NFC_CREDENTIALS.registered)) {
     return { status: "registered" as const, customer: simulatedRegisteredCustomer };
   }
 
-  if (credential.value === SIMULATED_NFC_CREDENTIALS.revoked.value) {
+  if (matches(credential, SIMULATED_NFC_CREDENTIALS.revoked)) {
     return { status: "revoked" as const };
   }
 
-  if (credential.value === SIMULATED_NFC_CREDENTIALS.unregistered.value) {
+  if (matches(credential, SIMULATED_NFC_CREDENTIALS.unregistered)) {
     return { status: "unregistered" as const };
   }
 
