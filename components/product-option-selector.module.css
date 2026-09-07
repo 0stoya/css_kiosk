@@ -81,8 +81,87 @@
   font-weight: 700;
 }
 
+.groupedList {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.groupedRow {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid #c6d5e1;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.groupedProduct {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.groupedProduct strong {
+  overflow: hidden;
+  color: var(--css-text);
+  font-size: 16px;
+  text-overflow: ellipsis;
+}
+
+.groupedProduct small {
+  color: var(--css-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.groupedQuantity {
+  display: grid;
+  grid-template-columns: 46px 50px 46px;
+  align-items: center;
+  border: 1px solid #aebfcd;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.groupedQuantity button,
+.groupedQuantity output {
+  min-height: 48px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: #fff;
+  color: var(--css-primary);
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.groupedQuantity output {
+  border-left: 1px solid #d6e0e8;
+  border-right: 1px solid #d6e0e8;
+  color: var(--css-text);
+  font-size: 17px;
+}
+
+.groupedQuantity button:disabled {
+  opacity: .35;
+}
+
 @media (max-width: 760px) {
   .choices {
     grid-template-columns: 1fr;
+  }
+
+  .groupedRow {
+    grid-template-columns: 1fr;
+  }
+
+  .groupedQuantity {
+    width: 100%;
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
