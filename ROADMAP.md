@@ -28,7 +28,9 @@ Status: in progress
 - [x] real Magento customer authentication accepted against the live environment
 - [x] server-side hashed NFC credential persistence + five-minute pending card-link proof implemented
 - [ ] accept a real Magento account link against the persistent simulated card and confirm it survives restart
-- [ ] define kiosk device registration and trust model
+- [x] define signed kiosk device registration/trust model using ECDSA P-256 public keys
+- [x] development simulator exercises signed device requests and nonce replay protection
+- [ ] accept signed device trust against the simulator regression matrix
 - [ ] define trusted kiosk-to-Magento authenticated session exchange for subsequent card taps
 - [ ] implement inactivity session reset
 - [ ] implement offline / degraded-network state
@@ -46,6 +48,9 @@ Status: in progress
 - Raw NFC credentials are not stored; only a SHA-256 credential hash is persisted server-side.
 - Pending card links are short-lived, HttpOnly-bound and require explicit confirmation.
 - A linked card cannot silently move to another customer account.
+- Protected NFC/customer routes require a signed active kiosk device identity.
+- Device request signatures cover method, path, timestamp, nonce and exact body hash; nonces are single-use.
+- Production stores only the device public key; the future Android private key stays in Android Keystore.
 - No password, Magento token or reusable customer credential is persisted client-side.
 
 ## K1 — authenticated customer home
@@ -104,3 +109,4 @@ Exact scope to be agreed after Magento order and counter workflows are inspected
 7. Kiosk sessions are short-lived and reset automatically on inactivity.
 8. The kiosk device must never contain Magento Admin credentials.
 9. Production NFC trust decisions belong to the server, not browser state.
+10. Production kiosk devices use asymmetric signing; only the public key is stored server-side.

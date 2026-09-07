@@ -4,6 +4,10 @@ import {
   NfcCredentialStoreError,
   parseNfcCredential,
 } from "@/lib/kiosk/credential-store";
+import {
+  KioskDeviceRequestError,
+  readTrustedJsonRequest,
+} from "@/lib/kiosk/device-request";
 import { setPendingLinkProof } from "@/lib/kiosk/pending-link-cookie";
 import {
   MagentoCustomerAuthError,
@@ -21,9 +25,23 @@ export async function POST(request: Request) {
   let payload: { email?: unknown; password?: unknown; credential?: unknown };
 
   try {
-    payload = await request.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid login request." }, { status: 400 });
+    ({ payload } = await readTrustedJsonRequest<{
+      email?: unknown;
+      password?: unknown;
+      credential?: unknown;
+    }>(request));
+  } catch (error) {
+    if (error instanceof KioskDeviceRequestError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+
+    return NextResponse.json(
+      { ok: false, code: "DEVICE_UNAVAILABLE", error: "Kiosk device validation is unavailable." },
+      { status: 503 },
+    );
   }
 
   const email = typeof payload.email === "string" ? payload.email.trim() : "";

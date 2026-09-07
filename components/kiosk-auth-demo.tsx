@@ -3,6 +3,10 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
+import {
+  createDevelopmentKioskDeviceSigner,
+  type DevelopmentKioskDeviceSigner,
+} from "@/lib/kiosk/device-simulator";
 import type { NfcCredential } from "@/lib/kiosk/nfc-reader";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import {
@@ -53,11 +57,14 @@ type ResolveCardResponse = CustomerResponse & {
   status?: "registered" | "unregistered" | "revoked";
 };
 
+type DeviceTrustState = "enrolling" | "trusted" | "error";
+
 export function KioskAuthDemo() {
   const [state, setState] = useState<KioskAuthState>("idle");
   const [cardFixture, setCardFixture] = useState<SimulatedCardFixture>("unregistered");
   const [magentoResult, setMagentoResult] = useState<SimulatedMagentoResult>("real");
   const [readerAvailable, setReaderAvailable] = useState(true);
+  const [deviceTrust, setDeviceTrust] = useState<DeviceTrustState>("enrolling");
   const [activeCredential, setActiveCredential] = useState<NfcCredential | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,13 +73,23 @@ export function KioskAuthDemo() {
   const [verifiedCustomer, setVerifiedCustomer] = useState<VerifiedKioskCustomer | null>(null);
   const [linkingCard, setLinkingCard] = useState(false);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
+  const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
   const showPrototypeTools = process.env.NODE_ENV !== "production";
 
   useEffect(() => {
     if (!showPrototypeTools) return;
 
     const simulator = createKioskNfcSimulator();
+    const deviceSigner = createDevelopmentKioskDeviceSigner();
     simulatorRef.current = simulator;
+    deviceSignerRef.current = deviceSigner;
+    let cancelled = false;
+
+    async function signedFetch(input: string, init?: RequestInit) {
+      const signer = deviceSignerRef.current;
+      if (!signer) throw new Error("Kiosk device signer is unavailable.");
+      return signer.signedFetch(input, init);
+    }
 
     async function resolveCredential(credential: NfcCredential) {
       setActiveCredential(credential);
@@ -82,7 +99,7 @@ export function KioskAuthDemo() {
       setVerifiedCustomer(null);
 
       try {
-        const response = await fetch("/api/nfc/resolve", {
+        const response = await signedFetch("/api/nfc/resolve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ credential }),
@@ -130,18 +147,43 @@ export function KioskAuthDemo() {
       setState("error");
     });
 
-    void simulator.start();
+    async function startSimulator() {
+      try {
+        await deviceSigner.enroll();
+        const statusResponse = await deviceSigner.signedFetch("/api/device/status");
+        if (!statusResponse.ok) {
+          throw new Error("Kiosk device trust check failed.");
+        }
+
+        if (cancelled) return;
+        setDeviceTrust("trusted");
+        await simulator.start();
+      } catch {
+        if (cancelled) return;
+        setDeviceTrust("error");
+        setMessage("The kiosk device could not establish a trusted connection.");
+        setState("error");
+      }
+    }
+
+    void startSimulator();
 
     return () => {
+      cancelled = true;
       removeCredentialHandler();
       removeErrorHandler();
       void simulator.stop();
       simulatorRef.current = null;
+      deviceSignerRef.current = null;
     };
   }, [showPrototypeTools]);
 
   function reset() {
-    void fetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
+    const signer = deviceSignerRef.current;
+    if (signer && deviceTrust === "trusted") {
+      void signer.signedFetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
+    }
+
     setState("idle");
     setActiveCredential(null);
     setEmail("");
@@ -153,7 +195,7 @@ export function KioskAuthDemo() {
   }
 
   function presentSimulatedCard() {
-    if (!showPrototypeTools) return;
+    if (!showPrototypeTools || deviceTrust !== "trusted") return;
     setMessage(null);
     setFormError(null);
     simulatorRef.current?.presentCard(cardFixture);
@@ -202,8 +244,15 @@ export function KioskAuthDemo() {
       return;
     }
 
+    const signer = deviceSignerRef.current;
+    if (!signer || deviceTrust !== "trusted") {
+      setMessage("This kiosk is not trusted for customer sign in.");
+      setState("error");
+      return;
+    }
+
     try {
-      const response = await fetch("/api/auth/verify-customer", {
+      const response = await signer.signedFetch("/api/auth/verify-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -244,11 +293,18 @@ export function KioskAuthDemo() {
       return;
     }
 
+    const signer = deviceSignerRef.current;
+    if (!signer || deviceTrust !== "trusted") {
+      setMessage("This kiosk is not trusted for card linking.");
+      setState("error");
+      return;
+    }
+
     setLinkingCard(true);
     setMessage(null);
 
     try {
-      const response = await fetch("/api/nfc/link", { method: "POST" });
+      const response = await signer.signedFetch("/api/nfc/link", { method: "POST" });
       const body = (await response.json()) as CustomerResponse;
 
       if (!response.ok || !body.ok || !body.customer) {
@@ -411,7 +467,8 @@ export function KioskAuthDemo() {
       {showPrototypeTools ? (
         <aside className="prototype-tools" aria-label="Kiosk simulator controls">
           <strong>Kiosk simulator</strong>
-          <span>Development only · Android reader simulated; card links persist server-side</span>
+          <span>Development only · signed device + Android NFC reader simulated</span>
+          <span>Device trust: {deviceTrust === "trusted" ? "Trusted" : deviceTrust === "error" ? "Failed" : "Enrolling…"}</span>
 
           <label>
             Reader
@@ -434,7 +491,7 @@ export function KioskAuthDemo() {
             </select>
           </label>
 
-          <button type="button" onClick={presentSimulatedCard} disabled={state === "reading"}>Present card</button>
+          <button type="button" onClick={presentSimulatedCard} disabled={state === "reading" || deviceTrust !== "trusted"}>Present card</button>
 
           <label>
             Magento auth
