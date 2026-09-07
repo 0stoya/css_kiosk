@@ -11,6 +11,7 @@ export type KioskCatalogueProduct = {
   uid: string;
   sku: string;
   name: string;
+  productType: string;
   urlKey: string | null;
   imageUrl: string | null;
   imageLabel: string | null;
@@ -45,6 +46,7 @@ type CategoryRow = {
 };
 
 type ProductRow = {
+  __typename?: string | null;
   uid?: string | null;
   sku?: string | null;
   name?: string | null;
@@ -122,6 +124,7 @@ const CATALOGUE_QUERY = /* GraphQL */ `
         total_pages
       }
       items {
+        __typename
         uid
         sku
         name
@@ -270,6 +273,7 @@ export async function getAuthenticatedCatalogue(input: {
       uid: item.uid as string,
       sku: item.sku as string,
       name: item.name as string,
+      productType: item.__typename || "ProductInterface",
       urlKey: item.url_key || null,
       imageUrl: item.small_image?.url || null,
       imageLabel: item.small_image?.label || null,
