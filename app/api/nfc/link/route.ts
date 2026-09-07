@@ -16,6 +16,12 @@ import {
   clearPendingLinkProof,
   getPendingLinkProof,
 } from "@/lib/kiosk/pending-link-cookie";
+import {
+  clearKioskSessionId,
+  getKioskSessionId,
+} from "@/lib/kiosk/session-cookie";
+import { destroyKioskSession } from "@/lib/kiosk/session-store";
+import { revokeMagentoCustomerToken } from "@/lib/magento/revoke-customer-token";
 
 export const runtime = "nodejs";
 
@@ -88,18 +94,26 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  let device;
   try {
-    await verifyTrustedRequest(request);
+    device = await verifyTrustedRequest(request);
   } catch (error) {
     return deviceFailure(error);
   }
 
   const proof = await getPendingLinkProof();
+  const sessionId = await getKioskSessionId();
 
   try {
     if (proof) cancelPendingNfcLink(proof);
+
+    const session = sessionId ? destroyKioskSession(sessionId, device.deviceId) : null;
+    if (session) {
+      await revokeMagentoCustomerToken(session.magentoToken).catch(() => false);
+    }
   } finally {
     await clearPendingLinkProof();
+    await clearKioskSessionId();
   }
 
   return NextResponse.json({ ok: true });
