@@ -1,4 +1,4 @@
-# K2 configurable and bundle products
+# K2 configurable, bundle and grouped products
 
 Updated: 7 Sep 2026
 
@@ -14,9 +14,11 @@ The kiosk uses the existing authenticated, server-held Magento customer token an
 products(filter: { sku })
   -> ConfigurableProduct.configurable_options
   -> BundleProduct.items/options
+  -> GroupedProduct.items
 
 addProductsToCart
-  -> CartItemInput.selected_options
+  -> CartItemInput.selected_options for configurable/bundle products
+  -> multiple child CartItemInput rows for grouped products
 ```
 
 No kiosk-specific Magento REST endpoint is introduced. The deployed custom Magento boundary remains `0stoya/Fluid/Css/Commerce`.
@@ -29,13 +31,13 @@ browser
   -> css_kiosk validates trusted device + nonce
   -> resolves device-bound kiosk session
   -> server-held Magento token
-  -> Magento GraphQL product option lookup
-  -> safe option labels + opaque option UIDs
-  -> browser chooses options
+  -> Magento GraphQL product option/group lookup
+  -> safe labels, SKUs and opaque option UIDs
+  -> browser chooses options/quantities
 
 browser
   -> signed POST /api/cart
-  -> sku + quantity + selected Magento option UIDs
+  -> selected product inputs only
   -> css_kiosk session/device validation
   -> server-held Magento token
   -> Magento GraphQL addProductsToCart
@@ -46,7 +48,7 @@ The Magento customer bearer token and cart ID remain server-side.
 
 ## Configurable products
 
-For `ConfigurableProduct` the product dialog now loads each configurable attribute and its values. The user must choose exactly one value for every attribute before the item can be added.
+For `ConfigurableProduct` the product dialog loads each configurable attribute and its values. The user must choose exactly one value for every attribute before the item can be added.
 
 The Magento-provided value UIDs are submitted as `selected_options`; the kiosk does not attempt to invent variant SKUs or decode configurable identifiers.
 
@@ -63,6 +65,23 @@ For `BundleProduct` the product dialog loads bundle groups and choices.
 - each selected bundle choice uses Magento's opaque option UID through `selected_options`
 
 Bundle child quantities currently follow the quantities encoded/configured by Magento in the returned option UID. If a live CSS bundle exposes shopper-changeable child quantities, that exact product must be runtime-tested before adding a quantity override rather than reconstructing Magento option identifiers in the browser.
+
+## Grouped products
+
+A live CSS catalogue product was confirmed to be `GroupedProduct` during runtime acceptance (`CTR251/GR`, Combat Trouser Graphite c/w).
+
+Grouped products are not a parent SKU with one option UID. Magento exposes associated child products, so the kiosk now:
+
+```text
+GroupedProduct.items
+-> child SKU/name/stock
+-> touch quantity control per available child
+-> user chooses one or more quantities
+-> signed /api/cart action add_grouped
+-> addProductsToCart with one CartItemInput per selected child SKU
+```
+
+Out-of-stock grouped children cannot be selected. The product cannot be added until at least one available child has a positive quantity. The parent grouped SKU is not incorrectly submitted as a simple cart line.
 
 ## Checkout boundary confirmed
 
@@ -102,6 +121,13 @@ BundleProduct
 -> choose required options
 -> Add to basket
 -> correct bundle appears
+
+GroupedProduct
+-> open product
+-> child rows load
+-> set quantity on at least one child
+-> Add to basket
+-> selected child item(s) appear with correct quantities
 
 Sign out
 -> same card signs in again
