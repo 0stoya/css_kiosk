@@ -22,9 +22,9 @@ function assertionKey() {
   }
 
   privateKey = createPrivateKey(readFileSync(path));
-  if (privateKey.asymmetricKeyType !== "rsa" && privateKey.asymmetricKeyType !== "rsa-pss") {
+  if (privateKey.asymmetricKeyType !== "rsa") {
     privateKey = null;
-    throw new Error("Magento kiosk assertion key must be an RSA private key.");
+    throw new Error("Magento kiosk assertion key must be a standard RSA private key.");
   }
 
   return privateKey;
