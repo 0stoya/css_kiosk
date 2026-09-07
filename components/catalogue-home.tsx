@@ -4,9 +4,12 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import type { KioskProductOptions } from "@/lib/magento/product-options";
 import {
+  defaultGroupedQuantities,
   defaultProductSelections,
+  groupedSelectionsComplete,
   ProductOptionSelector,
   productSelectionsComplete,
+  selectedGroupedBasketItems,
   selectedProductOptionUids,
 } from "./product-option-selector";
 import styles from "./catalogue-home.module.css";
@@ -91,6 +94,7 @@ type BasketResponse = {
 type BasketAction =
   | { action: "get" }
   | { action: "add"; sku: string; quantity: number; selectedOptions?: string[] }
+  | { action: "add_grouped"; items: Array<{ sku: string; quantity: number }> }
   | { action: "update"; itemUid: string; quantity: number }
   | { action: "remove"; itemUid: string };
 
@@ -146,6 +150,7 @@ function productTypeLabel(productType: string) {
   if (productType === "SimpleProduct") return "Ready to add";
   if (productType === "ConfigurableProduct") return "Choose product options";
   if (productType === "BundleProduct") return "Build your bundle";
+  if (productType === "GroupedProduct") return "Choose item quantities";
   return "Product options required";
 }
 
@@ -174,6 +179,7 @@ export function CatalogueHome({
   const [productOptionsLoading, setProductOptionsLoading] = useState(false);
   const [productOptionsError, setProductOptionsError] = useState<string | null>(null);
   const [productOptionSelections, setProductOptionSelections] = useState<Record<string, string[]>>({});
+  const [groupedProductQuantities, setGroupedProductQuantities] = useState<Record<string, number>>({});
 
   const companyName = customer.company?.name || "Personal account";
   const companyReference = customer.company?.reference || null;
@@ -309,6 +315,7 @@ export function CatalogueHome({
     setProductOptionsError(null);
     setProductOptions(null);
     setProductOptionSelections({});
+    setGroupedProductQuantities({});
 
     try {
       const response = await signedFetch("/api/product-options", {
@@ -335,6 +342,7 @@ export function CatalogueHome({
 
       setProductOptions(body.product);
       setProductOptionSelections(defaultProductSelections(body.product));
+      setGroupedProductQuantities(defaultGroupedQuantities(body.product));
     } catch {
       setProductOptionsError("Product options could not be loaded right now.");
     } finally {
@@ -370,8 +378,13 @@ export function CatalogueHome({
     setProductOptions(null);
     setProductOptionsError(null);
     setProductOptionSelections({});
+    setGroupedProductQuantities({});
 
-    if (product.productType === "ConfigurableProduct" || product.productType === "BundleProduct") {
+    if (
+      product.productType === "ConfigurableProduct" ||
+      product.productType === "BundleProduct" ||
+      product.productType === "GroupedProduct"
+    ) {
       void loadProductOptions(product);
     }
   }
@@ -381,25 +394,39 @@ export function CatalogueHome({
     setProductOptions(null);
     setProductOptionsError(null);
     setProductOptionSelections({});
+    setGroupedProductQuantities({});
   }
 
   async function addSelectedProduct() {
     if (!selectedProduct) return;
 
-    let selectedOptions: string[] | undefined;
-    if (selectedProduct.productType === "ConfigurableProduct" || selectedProduct.productType === "BundleProduct") {
-      if (!productOptions || !productSelectionsComplete(productOptions, productOptionSelections)) return;
-      selectedOptions = selectedProductOptionUids(productOptionSelections);
-    } else if (selectedProduct.productType !== "SimpleProduct") {
-      return;
-    }
+    let added = false;
 
-    const added = await performBasketAction({
-      action: "add",
-      sku: selectedProduct.sku,
-      quantity: selectedQuantity,
-      selectedOptions,
-    });
+    if (selectedProduct.productType === "GroupedProduct") {
+      if (!productOptions || !groupedSelectionsComplete(productOptions, groupedProductQuantities)) return;
+      added = await performBasketAction({
+        action: "add_grouped",
+        items: selectedGroupedBasketItems(productOptions, groupedProductQuantities),
+      });
+    } else {
+      let selectedOptions: string[] | undefined;
+      if (
+        selectedProduct.productType === "ConfigurableProduct" ||
+        selectedProduct.productType === "BundleProduct"
+      ) {
+        if (!productOptions || !productSelectionsComplete(productOptions, productOptionSelections)) return;
+        selectedOptions = selectedProductOptionUids(productOptionSelections);
+      } else if (selectedProduct.productType !== "SimpleProduct") {
+        return;
+      }
+
+      added = await performBasketAction({
+        action: "add",
+        sku: selectedProduct.sku,
+        quantity: selectedQuantity,
+        selectedOptions,
+      });
+    }
 
     if (added) {
       closeProduct();
@@ -435,10 +462,18 @@ export function CatalogueHome({
   const selectedInStock = selectedProduct?.stockStatus === "IN_STOCK";
   const selectedNeedsOptions = Boolean(
     selectedProduct &&
-      (selectedProduct.productType === "ConfigurableProduct" || selectedProduct.productType === "BundleProduct"),
+      (
+        selectedProduct.productType === "ConfigurableProduct" ||
+        selectedProduct.productType === "BundleProduct" ||
+        selectedProduct.productType === "GroupedProduct"
+      ),
   );
   const selectedOptionsComplete = Boolean(
-    selectedNeedsOptions && productOptions && productSelectionsComplete(productOptions, productOptionSelections),
+    selectedNeedsOptions &&
+      productOptions &&
+      (selectedProduct?.productType === "GroupedProduct"
+        ? groupedSelectionsComplete(productOptions, groupedProductQuantities)
+        : productSelectionsComplete(productOptions, productOptionSelections)),
   );
   const selectedCanAdd = Boolean(
     selectedProduct &&
@@ -645,30 +680,34 @@ export function CatalogueHome({
                 <ProductOptionSelector
                   product={productOptions}
                   selections={productOptionSelections}
+                  groupedQuantities={groupedProductQuantities}
                   onChange={setProductOptionSelections}
+                  onGroupedQuantityChange={setGroupedProductQuantities}
                   disabled={basketMutating}
                 />
               ) : null}
 
               {selectedCanAdd ? (
                 <div className={styles.addControls}>
-                  <div className={styles.quantityControl} aria-label="Quantity">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedQuantity((quantity) => Math.max(1, quantity - 1))}
-                      disabled={basketMutating || selectedQuantity <= 1}
-                    >
-                      −
-                    </button>
-                    <output>{selectedQuantity}</output>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedQuantity((quantity) => Math.min(999, quantity + 1))}
-                      disabled={basketMutating || selectedQuantity >= 999}
-                    >
-                      +
-                    </button>
-                  </div>
+                  {selectedProduct.productType !== "GroupedProduct" ? (
+                    <div className={styles.quantityControl} aria-label="Quantity">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuantity((quantity) => Math.max(1, quantity - 1))}
+                        disabled={basketMutating || selectedQuantity <= 1}
+                      >
+                        −
+                      </button>
+                      <output>{selectedQuantity}</output>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuantity((quantity) => Math.min(999, quantity + 1))}
+                        disabled={basketMutating || selectedQuantity >= 999}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     className={styles.addButton}
                     type="button"
@@ -684,9 +723,11 @@ export function CatalogueHome({
                     ? "This product is not currently available to add from the kiosk."
                     : productOptionsError
                       ? "Reload the product options before adding this item."
-                      : selectedNeedsOptions
-                        ? "Choose every required option before adding this product."
-                        : "This product type is not yet supported by the kiosk basket."}
+                      : selectedProduct.productType === "GroupedProduct"
+                        ? "Choose a quantity for at least one available item."
+                        : selectedNeedsOptions
+                          ? "Choose every required option before adding this product."
+                          : "This product type is not yet supported by the kiosk basket."}
                 </p>
               )}
 
