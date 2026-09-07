@@ -31,11 +31,19 @@ export type KioskBundleItem = {
   choices: KioskBundleChoice[];
 };
 
+export type KioskGroupedItem = {
+  sku: string;
+  name: string;
+  stockStatus: string | null;
+  defaultQuantity: number;
+};
+
 export type KioskProductOptions = {
   sku: string;
   productType: string;
   configurableOptions: KioskConfigurableOption[];
   bundleItems: KioskBundleItem[];
+  groupedItems: KioskGroupedItem[];
 };
 
 type GraphQLErrorItem = { message?: string };
@@ -75,6 +83,13 @@ type ProductOptionsData = {
             stock_status?: string | null;
           } | null;
         } | null> | null;
+        qty?: number | null;
+        position?: number | null;
+        product?: {
+          sku?: string | null;
+          name?: string | null;
+          stock_status?: string | null;
+        } | null;
       } | null> | null;
     } | null> | null;
   } | null;
@@ -124,6 +139,17 @@ const PRODUCT_OPTIONS_QUERY = /* GraphQL */ `
                 name
                 stock_status
               }
+            }
+          }
+        }
+        ... on GroupedProduct {
+          items {
+            qty
+            position
+            product {
+              sku
+              name
+              stock_status
             }
           }
         }
@@ -200,34 +226,52 @@ export async function getAuthenticatedProductOptions(input: {
         .map((value) => ({ uid: value!.uid as string, label: value!.label as string })),
     }));
 
-  const bundleItems = (row.items || [])
-    .filter((item) => Boolean(item?.uid && item?.title && item?.type))
-    .map((item) => ({
-      uid: item!.uid as string,
-      title: item!.title as string,
-      type: item!.type as string,
-      required: item!.required === true,
-      choices: (item!.options || [])
-        .filter((option) => Boolean(option?.uid && option?.label))
-        .map((option) => ({
-          uid: option!.uid as string,
-          label: option!.label as string,
-          isDefault: option!.is_default === true,
-          canChangeQuantity: option!.can_change_quantity === true,
-          quantity:
-            typeof option!.quantity === "number" && option!.quantity > 0
-              ? option!.quantity
-              : 1,
-          sku: option!.product?.sku || null,
-          name: option!.product?.name || null,
-          stockStatus: option!.product?.stock_status || null,
-        })),
-    }));
+  const bundleItems = row.__typename === "BundleProduct"
+    ? (row.items || [])
+        .filter((item) => Boolean(item?.uid && item?.title && item?.type))
+        .map((item) => ({
+          uid: item!.uid as string,
+          title: item!.title as string,
+          type: item!.type as string,
+          required: item!.required === true,
+          choices: (item!.options || [])
+            .filter((option) => Boolean(option?.uid && option?.label))
+            .map((option) => ({
+              uid: option!.uid as string,
+              label: option!.label as string,
+              isDefault: option!.is_default === true,
+              canChangeQuantity: option!.can_change_quantity === true,
+              quantity:
+                typeof option!.quantity === "number" && option!.quantity > 0
+                  ? option!.quantity
+                  : 1,
+              sku: option!.product?.sku || null,
+              name: option!.product?.name || null,
+              stockStatus: option!.product?.stock_status || null,
+            })),
+        }))
+    : [];
+
+  const groupedItems = row.__typename === "GroupedProduct"
+    ? (row.items || [])
+        .filter((item) => Boolean(item?.product?.sku && item?.product?.name))
+        .sort((a, b) => (a?.position || 0) - (b?.position || 0))
+        .map((item) => ({
+          sku: item!.product!.sku as string,
+          name: item!.product!.name as string,
+          stockStatus: item!.product!.stock_status || null,
+          defaultQuantity:
+            typeof item!.qty === "number" && item!.qty > 0 && Number.isFinite(item!.qty)
+              ? Math.min(999, Math.max(1, Math.trunc(item!.qty)))
+              : 0,
+        }))
+    : [];
 
   return {
     sku: row.sku,
     productType: row.__typename,
     configurableOptions,
     bundleItems,
+    groupedItems,
   };
 }
