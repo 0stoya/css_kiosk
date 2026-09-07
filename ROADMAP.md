@@ -14,12 +14,16 @@ Status: in progress
 - [x] Next.js / React / TypeScript baseline aligned with CSS Admin runtime versions
 - [x] 1080 x 1920 portrait-first touch shell
 - [x] CSS brand tokens and touch-sized controls
+- [x] real CSS logo used across kiosk auth states
 - [x] NFC authentication state model
-- [x] mock card scenarios: registered / unregistered / revoked
+- [x] development-only NFC reader simulator behind the `NfcReader` boundary
+- [x] deterministic hardware fixtures: ready / unavailable / registered / unknown / revoked / read error
+- [x] deterministic Magento-auth fixtures: success / invalid credentials / unavailable
+- [x] passive NFC target: card reads arrive as external reader events, not screen taps
 - [x] unknown-card email/password linking journey prototype
 - [x] explicit account-link confirmation before assigning the card
 - [x] signed-in welcome and sign-out reset
-- [ ] generate and commit dependency lockfile after first local install
+- [x] simulator documented in `docs/SIMULATOR.md`
 - [ ] connect real Magento customer authentication
 - [ ] define server-side NFC credential persistence
 - [ ] define kiosk device registration and trust model
@@ -32,7 +36,9 @@ Status: in progress
 - Runs at portrait 1080 x 1920 without horizontal scrolling.
 - All customer actions are comfortably touchable.
 - Known-card and unknown-card journeys can be exercised without physical NFC hardware.
+- Reader unavailable, card read error, invalid Magento credentials and Magento service outage all fail closed in the simulator.
 - Prototype controls are unavailable in a production build.
+- Production cannot create a fake NFC read or accept simulated Magento authentication.
 - No password, Magento token or reusable customer credential is persisted client-side.
 - Card linking requires successful Magento authentication and an explicit confirmation step once backend work begins.
 
