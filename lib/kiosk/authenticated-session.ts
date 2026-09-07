@@ -1,6 +1,12 @@
 import { createMagentoKioskAssertion } from "@/lib/kiosk/magento-assertion";
-import { createKioskSession } from "@/lib/kiosk/session-store";
-import { setKioskSessionId } from "@/lib/kiosk/session-cookie";
+import {
+  getKioskSessionId,
+  setKioskSessionId,
+} from "@/lib/kiosk/session-cookie";
+import {
+  createKioskSession,
+  destroyKioskSession,
+} from "@/lib/kiosk/session-store";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import { getVerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import {
@@ -56,6 +62,16 @@ function currentCustomerForLinkedContext(
   };
 }
 
+async function replacePreviousSession(deviceId: string) {
+  const previousSessionId = await getKioskSessionId();
+  if (!previousSessionId) return;
+
+  const previousSession = destroyKioskSession(previousSessionId, deviceId);
+  if (previousSession) {
+    await revokeMagentoCustomerToken(previousSession.magentoToken).catch(() => false);
+  }
+}
+
 export async function establishAuthenticatedKioskSession(input: {
   deviceId: string;
   linkedCustomer: VerifiedKioskCustomer;
@@ -71,6 +87,9 @@ export async function establishAuthenticatedKioskSession(input: {
 
     const freshCustomer = await getVerifiedKioskCustomer(magentoToken);
     const customer = currentCustomerForLinkedContext(input.linkedCustomer, freshCustomer);
+
+    await replacePreviousSession(input.deviceId);
+
     const { sessionId, session } = createKioskSession({
       deviceId: input.deviceId,
       magentoToken,
