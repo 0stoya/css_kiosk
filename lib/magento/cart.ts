@@ -136,10 +136,19 @@ const CUSTOMER_CART_QUERY = /* GraphQL */ `
 
 const ADD_TO_CART_MUTATION = /* GraphQL */ `
   ${CART_FIELDS}
-  mutation KioskAddProductsToCart($cartId: String!, $sku: String!, $quantity: Float!) {
+  mutation KioskAddProductsToCart(
+    $cartId: String!
+    $sku: String!
+    $quantity: Float!
+    $selectedOptions: [ID!]
+  ) {
     addProductsToCart(
       cartId: $cartId
-      cartItems: [{ sku: $sku, quantity: $quantity }]
+      cartItems: [{
+        sku: $sku
+        quantity: $quantity
+        selected_options: $selectedOptions
+      }]
     ) {
       cart {
         ...KioskCartFields
@@ -302,6 +311,7 @@ export async function addAuthenticatedBasketItem(input: {
   token: string;
   sku: string;
   quantity: number;
+  selectedOptions?: string[];
 }): Promise<KioskBasket> {
   const cart = await customerCartRow(input.token);
   const data = await requestMagento<{ addProductsToCart?: CartMutationResult }>({
@@ -311,6 +321,7 @@ export async function addAuthenticatedBasketItem(input: {
       cartId: cart.id,
       sku: input.sku,
       quantity: input.quantity,
+      selectedOptions: input.selectedOptions?.length ? input.selectedOptions : null,
     },
   });
 
