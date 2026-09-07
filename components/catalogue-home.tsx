@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import styles from "./catalogue-home.module.css";
 
@@ -104,7 +104,6 @@ export function CatalogueHome({
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const initialLoadStartedRef = useRef(false);
 
   const companyName = customer.company?.name || "Personal account";
   const companyReference = customer.company?.reference || null;
@@ -150,14 +149,19 @@ export function CatalogueHome({
   );
 
   useEffect(() => {
-    if (initialLoadStartedRef.current) return;
-    initialLoadStartedRef.current = true;
+    let cancelled = false;
 
-    const timer = window.setTimeout(() => {
-      void loadCatalogue({ search: "", categoryUid: "" });
-    }, 0);
+    async function startInitialLoad() {
+      await Promise.resolve();
+      if (cancelled) return;
+      await loadCatalogue({ search: "", categoryUid: "" });
+    }
 
-    return () => window.clearTimeout(timer);
+    void startInitialLoad();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadCatalogue]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
