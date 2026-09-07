@@ -1,8 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState } from "react";
-import { KioskAuthState, MockCardScenario, mockCustomer } from "@/lib/kiosk/auth-state";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
+import {
+  createKioskNfcSimulator,
+  KioskNfcSimulator,
+  resolveSimulatedCard,
+  SimulatedCardFixture,
+  SimulatedMagentoResult,
+} from "@/lib/kiosk/simulator";
 
 function ContactlessIcon() {
   return (
@@ -36,50 +43,129 @@ function LockIcon() {
 
 export function KioskAuthDemo() {
   const [state, setState] = useState<KioskAuthState>("idle");
-  const [scenario, setScenario] = useState<MockCardScenario>("unregistered");
+  const [cardFixture, setCardFixture] = useState<SimulatedCardFixture>("unregistered");
+  const [magentoResult, setMagentoResult] = useState<SimulatedMagentoResult>("success");
+  const [readerAvailable, setReaderAvailable] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const showPrototypeTools = process.env.NODE_ENV !== "production";
+
+  useEffect(() => {
+    if (!showPrototypeTools) return;
+
+    const simulator = createKioskNfcSimulator();
+    simulatorRef.current = simulator;
+    let backendTimer: number | null = null;
+
+    const removeCredentialHandler = simulator.onCredential((credential) => {
+      setState("reading");
+      setMessage(null);
+      setFormError(null);
+
+      backendTimer = window.setTimeout(() => {
+        const outcome = resolveSimulatedCard(credential);
+
+        if (outcome === "registered") {
+          setState("welcome");
+          return;
+        }
+
+        if (outcome === "unregistered") {
+          setState("unregistered");
+          return;
+        }
+
+        if (outcome === "revoked") {
+          setMessage("This card is no longer active. Please ask a member of staff for help.");
+          setState("error");
+          return;
+        }
+
+        setMessage("This card could not be recognised.");
+        setState("error");
+      }, 650);
+    });
+
+    const removeErrorHandler = simulator.onError((error) => {
+      setMessage(error.message);
+      setState("error");
+    });
+
+    void simulator.start();
+
+    return () => {
+      if (backendTimer !== null) window.clearTimeout(backendTimer);
+      removeCredentialHandler();
+      removeErrorHandler();
+      void simulator.stop();
+      simulatorRef.current = null;
+    };
+  }, [showPrototypeTools]);
 
   function reset() {
     setState("idle");
     setEmail("");
     setPassword("");
     setMessage(null);
+    setFormError(null);
   }
 
-  function simulateTap() {
+  function presentSimulatedCard() {
     if (!showPrototypeTools) return;
-
-    setState("reading");
     setMessage(null);
+    setFormError(null);
+    simulatorRef.current?.presentCard(cardFixture);
+  }
 
-    window.setTimeout(() => {
-      if (scenario === "registered") {
-        setState("welcome");
-        return;
-      }
-      if (scenario === "revoked") {
-        setMessage("This card is no longer active. Please ask a member of staff for help.");
-        setState("error");
-        return;
-      }
-      setState("unregistered");
-    }, 650);
+  function changeReaderAvailability(available: boolean) {
+    setReaderAvailable(available);
+    simulatorRef.current?.setAvailable(available);
   }
 
   function submitLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!email.trim() || !password) return;
+
+    setFormError(null);
     setState("linking");
 
+    if (!showPrototypeTools) {
+      setPassword("");
+      setMessage("Magento account linking is not connected on this kiosk yet.");
+      setState("error");
+      return;
+    }
+
     window.setTimeout(() => {
+      if (magentoResult === "invalid-credentials") {
+        setPassword("");
+        setFormError("Email address or password was not recognised. Please try again.");
+        setState("unregistered");
+        return;
+      }
+
+      if (magentoResult === "unavailable") {
+        setPassword("");
+        setMessage("We cannot reach the customer account service right now. Please try again shortly.");
+        setState("error");
+        return;
+      }
+
       setState("confirm-link");
     }, 650);
   }
 
   function confirmLink() {
+    if (!showPrototypeTools) {
+      setPassword("");
+      setMessage("Card linking is not connected on this kiosk yet.");
+      setState("error");
+      return;
+    }
+
     setPassword("");
     setState("welcome");
   }
@@ -105,24 +191,13 @@ export function KioskAuthDemo() {
         {waiting ? (
           <section className="auth-panel auth-panel-centred" aria-live="polite">
             <p className="eyebrow">Customer sign in</p>
-            <h1>{state === "reading" ? "Reading your card…" : "Tap your card to sign in"}</h1>
+            <h1>{state === "reading" ? "Checking your card…" : "Tap your card to sign in"}</h1>
             <p className="lead">Use your CSS customer card for fast access to your account and trade pricing.</p>
 
-            <button
-              className="nfc-target"
-              type="button"
-              onClick={simulateTap}
-              disabled={state === "reading" || !showPrototypeTools}
-            >
+            <div className={`nfc-target${state === "reading" ? " is-reading" : ""}`} role="status">
               <span className="nfc-icon"><ContactlessIcon /></span>
-              <span className="nfc-label">
-                {state === "reading"
-                  ? "Hold card in place"
-                  : showPrototypeTools
-                    ? "Tap card here"
-                    : "NFC reader required"}
-              </span>
-            </button>
+              <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
+            </div>
 
             <p className="privacy-note">The kiosk automatically signs out after inactivity.</p>
           </section>
@@ -169,6 +244,8 @@ export function KioskAuthDemo() {
                 </span>
               </label>
 
+              {formError ? <p className="form-error" role="alert">{formError}</p> : null}
+
               <button className="primary-button" type="submit" disabled={state === "linking"}>
                 {state === "linking" ? "Checking account…" : "Sign in & link card"}
               </button>
@@ -212,24 +289,52 @@ export function KioskAuthDemo() {
         {state === "error" ? (
           <section className="auth-panel auth-panel-centred">
             <div className="error-badge">!</div>
-            <p className="eyebrow">Card unavailable</p>
+            <p className="eyebrow">Unable to continue</p>
             <h1>We couldn’t sign you in</h1>
             <p className="lead">{message}</p>
-            <button className="primary-button" type="button" onClick={reset}>Try another card</button>
+            <button className="primary-button" type="button" onClick={reset}>Return to card screen</button>
           </section>
         ) : null}
       </main>
 
       {showPrototypeTools ? (
-        <aside className="prototype-tools" aria-label="Prototype controls">
-          <strong>Prototype NFC</strong>
-          <span>Hardware bridge not connected yet.</span>
-          <select value={scenario} onChange={(event) => setScenario(event.target.value as MockCardScenario)}>
-            <option value="unregistered">Unknown card</option>
-            <option value="registered">Registered card</option>
-            <option value="revoked">Revoked card</option>
-          </select>
-          <button type="button" onClick={reset}>Reset demo</button>
+        <aside className="prototype-tools" aria-label="Kiosk simulator controls">
+          <strong>Kiosk simulator</strong>
+          <span>Development only · Android reader and backend fixtures</span>
+
+          <label>
+            Reader
+            <select
+              value={readerAvailable ? "ready" : "unavailable"}
+              onChange={(event) => changeReaderAvailability(event.target.value === "ready")}
+            >
+              <option value="ready">Ready</option>
+              <option value="unavailable">Unavailable</option>
+            </select>
+          </label>
+
+          <label>
+            Card
+            <select value={cardFixture} onChange={(event) => setCardFixture(event.target.value as SimulatedCardFixture)}>
+              <option value="unregistered">Unknown card</option>
+              <option value="registered">Registered card</option>
+              <option value="revoked">Revoked card</option>
+              <option value="read-error">Read error</option>
+            </select>
+          </label>
+
+          <button type="button" onClick={presentSimulatedCard} disabled={state === "reading"}>Present card</button>
+
+          <label>
+            Magento auth
+            <select value={magentoResult} onChange={(event) => setMagentoResult(event.target.value as SimulatedMagentoResult)}>
+              <option value="success">Success</option>
+              <option value="invalid-credentials">Invalid credentials</option>
+              <option value="unavailable">Service unavailable</option>
+            </select>
+          </label>
+
+          <button type="button" onClick={reset}>Reset kiosk</button>
         </aside>
       ) : null}
     </div>
