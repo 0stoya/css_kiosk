@@ -9,6 +9,10 @@ import {
   MagentoLockerCheckoutError,
   prepareAuthenticatedLockerCheckout,
 } from "@/lib/magento/locker-checkout";
+import {
+  MagentoLockerOrderError,
+  submitAuthenticatedLockerOrder,
+} from "@/lib/magento/locker-order";
 
 export const runtime = "nodejs";
 
@@ -34,6 +38,44 @@ function deviceFailure(error: unknown) {
   );
 }
 
+function checkoutFailure(error: MagentoLockerCheckoutError) {
+  const status =
+    error.code === "NOT_CONFIGURED"
+      ? 503
+      : error.code === "UNAVAILABLE"
+        ? 503
+        : error.code === "REJECTED"
+          ? 409
+          : 502;
+
+  return NextResponse.json(
+    {
+      ok: false,
+      code: `LOCKER_${error.code}`,
+      error:
+        error.code === "REJECTED" || error.code === "NOT_CONFIGURED"
+          ? error.message
+          : "Locker checkout could not be prepared right now.",
+    },
+    { status },
+  );
+}
+
+function orderFailure(error: MagentoLockerOrderError) {
+  const status = error.code === "REJECTED" ? 409 : error.code === "UNAVAILABLE" ? 503 : 502;
+  return NextResponse.json(
+    {
+      ok: false,
+      code: `LOCKER_ORDER_${error.code}`,
+      error:
+        error.code === "REJECTED"
+          ? error.message
+          : "The locker order could not be submitted right now.",
+    },
+    { status },
+  );
+}
+
 export async function POST(request: Request) {
   let device;
   let payload: LockerCheckoutRequest;
@@ -46,7 +88,7 @@ export async function POST(request: Request) {
     return deviceFailure(error);
   }
 
-  if (payload.action !== "prepare") {
+  if (payload.action !== "prepare" && payload.action !== "confirm") {
     return NextResponse.json(
       { ok: false, code: "INVALID_REQUEST", error: "Locker checkout request is invalid." },
       { status: 400 },
@@ -63,42 +105,54 @@ export async function POST(request: Request) {
     );
   }
 
+  let checkout;
   try {
-    const checkout = await prepareAuthenticatedLockerCheckout({
+    checkout = await prepareAuthenticatedLockerCheckout({
       token: session.magentoToken,
       customer: session.customer,
     });
-
-    return NextResponse.json({ ok: true, checkout });
   } catch (error) {
-    if (error instanceof MagentoLockerCheckoutError) {
-      const status =
-        error.code === "NOT_CONFIGURED"
-          ? 503
-          : error.code === "UNAVAILABLE"
-            ? 503
-            : error.code === "REJECTED"
-              ? 409
-              : 502;
-
-      return NextResponse.json(
-        {
-          ok: false,
-          code: `LOCKER_${error.code}`,
-          error:
-            error.code === "REJECTED" || error.code === "NOT_CONFIGURED"
-              ? error.message
-              : "Locker checkout could not be prepared right now.",
-        },
-        { status },
-      );
-    }
+    if (error instanceof MagentoLockerCheckoutError) return checkoutFailure(error);
 
     return NextResponse.json(
       {
         ok: false,
         code: "LOCKER_UNAVAILABLE",
         error: "Locker checkout could not be prepared right now.",
+      },
+      { status: 503 },
+    );
+  }
+
+  if (payload.action === "prepare") {
+    return NextResponse.json({ ok: true, checkout });
+  }
+
+  if (!checkout.ordering.canSubmitCreditOrder) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "LOCKER_ORDER_REJECTED",
+        error: "This trade account is not allowed to submit an order from the kiosk.",
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    const submission = await submitAuthenticatedLockerOrder({
+      token: session.magentoToken,
+    });
+
+    return NextResponse.json({ ok: true, checkout, submission });
+  } catch (error) {
+    if (error instanceof MagentoLockerOrderError) return orderFailure(error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "LOCKER_ORDER_UNAVAILABLE",
+        error: "The locker order could not be submitted right now.",
       },
       { status: 503 },
     );
