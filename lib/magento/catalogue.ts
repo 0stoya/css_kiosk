@@ -36,26 +36,42 @@ type GraphQLResponse<TData> = {
   errors?: GraphQLErrorItem[];
 };
 
+type CategoryRow = {
+  uid?: string | null;
+  name?: string | null;
+  url_key?: string | null;
+  product_count?: number | null;
+  include_in_menu?: number | boolean | null;
+};
+
+type ProductRow = {
+  uid?: string | null;
+  sku?: string | null;
+  name?: string | null;
+  url_key?: string | null;
+  stock_status?: string | null;
+  small_image?: {
+    url?: string | null;
+    label?: string | null;
+  } | null;
+  price_range?: {
+    minimum_price?: {
+      regular_price?: {
+        value?: number | null;
+        currency?: string | null;
+      } | null;
+      final_price?: {
+        value?: number | null;
+        currency?: string | null;
+      } | null;
+    } | null;
+  } | null;
+};
+
 type CatalogueData = {
   categoryList?:
-    | Array<{
-        children?: Array<{
-          uid?: string | null;
-          name?: string | null;
-          url_key?: string | null;
-          product_count?: number | null;
-          include_in_menu?: number | boolean | null;
-        }> | null;
-      }>
-    | {
-        children?: Array<{
-          uid?: string | null;
-          name?: string | null;
-          url_key?: string | null;
-          product_count?: number | null;
-          include_in_menu?: number | boolean | null;
-        }> | null;
-      }
+    | Array<{ children?: CategoryRow[] | null }>
+    | { children?: CategoryRow[] | null }
     | null;
   products?: {
     total_count?: number | null;
@@ -63,29 +79,7 @@ type CatalogueData = {
       current_page?: number | null;
       total_pages?: number | null;
     } | null;
-    items?: Array<{
-      uid?: string | null;
-      sku?: string | null;
-      name?: string | null;
-      url_key?: string | null;
-      stock_status?: string | null;
-      small_image?: {
-        url?: string | null;
-        label?: string | null;
-      } | null;
-      price_range?: {
-        minimum_price?: {
-          regular_price?: {
-            value?: number | null;
-            currency?: string | null;
-          } | null;
-          final_price?: {
-            value?: number | null;
-            currency?: string | null;
-          } | null;
-        } | null;
-      } | null;
-    } | null> | null;
+    items?: Array<ProductRow | null> | null;
   } | null;
 };
 
@@ -154,13 +148,13 @@ const CATALOGUE_QUERY = /* GraphQL */ `
   }
 `;
 
-function categoryRows(categoryList: CatalogueData["categoryList"]) {
+function categoryRows(categoryList: CatalogueData["categoryList"]): CategoryRow[] {
   if (!categoryList) return [];
   const roots = Array.isArray(categoryList) ? categoryList : [categoryList];
   return roots.flatMap((root) => root.children || []);
 }
 
-function priceFor(item: NonNullable<NonNullable<CatalogueData["products"]>["items"]>[number]) {
+function priceFor(item: ProductRow) {
   const minimum = item.price_range?.minimum_price;
   const finalPrice = minimum?.final_price;
   const regularPrice = minimum?.regular_price;
@@ -187,10 +181,16 @@ export async function getAuthenticatedCatalogue(input: {
   pageSize?: number;
 }): Promise<KioskCatalogueResult> {
   const { graphqlUrl, storeCode } = getMagentoConfig();
-  const search = input.search?.trim() || null;
-  const categoryUid = input.categoryUid?.trim() || null;
+  const search = input.search?.trim() || "";
+  const categoryUid = input.categoryUid?.trim() || "";
   const pageSize = Math.max(1, Math.min(24, Math.trunc(input.pageSize || 8)));
   const currentPage = Math.max(1, Math.trunc(input.page || 1));
+
+  const filter = categoryUid
+    ? { category_uid: { eq: categoryUid } }
+    : search
+      ? null
+      : { price: { from: "0" } };
 
   let response: Response;
   try {
@@ -204,8 +204,8 @@ export async function getAuthenticatedCatalogue(input: {
       body: JSON.stringify({
         query: CATALOGUE_QUERY,
         variables: {
-          search,
-          filter: categoryUid ? { category_uid: { eq: categoryUid } } : null,
+          search: search || null,
+          filter,
           pageSize,
           currentPage,
         },
@@ -265,16 +265,16 @@ export async function getAuthenticatedCatalogue(input: {
     }));
 
   const products = productData.items
-    .filter((item) => Boolean(item?.uid && item?.sku && item?.name))
+    .filter((item): item is ProductRow => Boolean(item?.uid && item?.sku && item?.name))
     .map((item) => ({
-      uid: item!.uid as string,
-      sku: item!.sku as string,
-      name: item!.name as string,
-      urlKey: item!.url_key || null,
-      imageUrl: item!.small_image?.url || null,
-      imageLabel: item!.small_image?.label || null,
-      stockStatus: item!.stock_status || null,
-      price: priceFor(item!),
+      uid: item.uid as string,
+      sku: item.sku as string,
+      name: item.name as string,
+      urlKey: item.url_key || null,
+      imageUrl: item.small_image?.url || null,
+      imageLabel: item.small_image?.label || null,
+      stockStatus: item.stock_status || null,
+      price: priceFor(item),
     }));
 
   return {
