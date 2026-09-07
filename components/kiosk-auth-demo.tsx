@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { KioskAuthState, MockCardScenario, mockCustomer } from "@/lib/kiosk/auth-state";
 
@@ -88,11 +89,16 @@ export function KioskAuthDemo() {
   return (
     <div className="kiosk-stage">
       <header className="kiosk-brand">
-        <div className="brand-mark" aria-hidden="true">CSS</div>
-        <div>
-          <p className="brand-name">Chelmsford Safety Supplies</p>
-          <p className="brand-context">Trade counter kiosk</p>
-        </div>
+        <Image
+          className="brand-logo"
+          src="/css-logo.png"
+          alt="Chelmsford Safety Supplies"
+          width={2222}
+          height={514}
+          sizes="420px"
+          priority
+        />
+        <p className="brand-context">Trade counter kiosk</p>
       </header>
 
       <main className="kiosk-main">
