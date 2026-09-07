@@ -39,6 +39,7 @@ export function KioskAuthDemo() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const showPrototypeTools = process.env.NODE_ENV !== "production";
 
   function reset() {
     setState("idle");
@@ -200,16 +201,18 @@ export function KioskAuthDemo() {
         ) : null}
       </main>
 
-      <aside className="prototype-tools" aria-label="Prototype controls">
-        <strong>Prototype NFC</strong>
-        <span>Hardware bridge not connected yet.</span>
-        <select value={scenario} onChange={(event) => setScenario(event.target.value as MockCardScenario)}>
-          <option value="unregistered">Unknown card</option>
-          <option value="registered">Registered card</option>
-          <option value="revoked">Revoked card</option>
-        </select>
-        <button type="button" onClick={reset}>Reset demo</button>
-      </aside>
+      {showPrototypeTools ? (
+        <aside className="prototype-tools" aria-label="Prototype controls">
+          <strong>Prototype NFC</strong>
+          <span>Hardware bridge not connected yet.</span>
+          <select value={scenario} onChange={(event) => setScenario(event.target.value as MockCardScenario)}>
+            <option value="unregistered">Unknown card</option>
+            <option value="registered">Registered card</option>
+            <option value="revoked">Revoked card</option>
+          </select>
+          <button type="button" onClick={reset}>Reset demo</button>
+        </aside>
+      ) : null}
     </div>
   );
 }
