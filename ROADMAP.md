@@ -24,8 +24,9 @@ Status: in progress
 - [x] explicit account-link confirmation before assigning the card
 - [x] signed-in welcome and sign-out reset
 - [x] simulator documented in `docs/SIMULATOR.md`
-- [ ] connect real Magento customer authentication
-- [ ] define server-side NFC credential persistence
+- [x] real Magento customer-token + authenticated customer/company lookup implemented server-side
+- [ ] accept real Magento customer authentication against the live environment
+- [ ] define server-side NFC credential persistence and card-link proof
 - [ ] define kiosk device registration and trust model
 - [ ] implement inactivity session reset
 - [ ] implement offline / degraded-network state
@@ -39,6 +40,7 @@ Status: in progress
 - Reader unavailable, card read error, invalid Magento credentials and Magento service outage all fail closed in the simulator.
 - Prototype controls are unavailable in a production build.
 - Production cannot create a fake NFC read or accept simulated Magento authentication.
+- Real Magento verification returns only safe customer/company data to the browser; the customer token is not returned or persisted client-side.
 - No password, Magento token or reusable customer credential is persisted client-side.
 - Card linking requires successful Magento authentication and an explicit confirmation step once backend work begins.
 

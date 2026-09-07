@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
+import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import {
   createKioskNfcSimulator,
   KioskNfcSimulator,
@@ -41,6 +42,12 @@ function LockIcon() {
   );
 }
 
+type VerifyCustomerResponse = {
+  ok?: boolean;
+  error?: string;
+  customer?: VerifiedKioskCustomer;
+};
+
 export function KioskAuthDemo() {
   const [state, setState] = useState<KioskAuthState>("idle");
   const [cardFixture, setCardFixture] = useState<SimulatedCardFixture>("unregistered");
@@ -50,6 +57,7 @@ export function KioskAuthDemo() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [verifiedCustomer, setVerifiedCustomer] = useState<VerifiedKioskCustomer | null>(null);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const showPrototypeTools = process.env.NODE_ENV !== "production";
 
@@ -64,6 +72,7 @@ export function KioskAuthDemo() {
       setState("reading");
       setMessage(null);
       setFormError(null);
+      setVerifiedCustomer(null);
 
       backendTimer = window.setTimeout(() => {
         const outcome = resolveSimulatedCard(credential);
@@ -111,6 +120,7 @@ export function KioskAuthDemo() {
     setPassword("");
     setMessage(null);
     setFormError(null);
+    setVerifiedCustomer(null);
   }
 
   function presentSimulatedCard() {
@@ -125,52 +135,87 @@ export function KioskAuthDemo() {
     simulatorRef.current?.setAvailable(available);
   }
 
-  function submitLink(event: FormEvent<HTMLFormElement>) {
+  async function submitLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!email.trim() || !password) return;
 
+    const submittedEmail = email.trim();
+    const submittedPassword = password;
+    if (!submittedEmail || !submittedPassword) return;
+
+    setPassword("");
     setFormError(null);
+    setMessage(null);
     setState("linking");
 
-    if (!showPrototypeTools) {
-      setPassword("");
-      setMessage("Magento account linking is not connected on this kiosk yet.");
-      setState("error");
+    if (showPrototypeTools && magentoResult !== "real") {
+      window.setTimeout(() => {
+        if (magentoResult === "invalid-credentials") {
+          setFormError("Email address or password was not recognised. Please try again.");
+          setState("unregistered");
+          return;
+        }
+
+        if (magentoResult === "unavailable") {
+          setMessage("We cannot reach the customer account service right now. Please try again shortly.");
+          setState("error");
+          return;
+        }
+
+        setVerifiedCustomer(null);
+        setState("confirm-link");
+      }, 650);
       return;
     }
 
-    window.setTimeout(() => {
-      if (magentoResult === "invalid-credentials") {
-        setPassword("");
-        setFormError("Email address or password was not recognised. Please try again.");
-        setState("unregistered");
-        return;
-      }
+    try {
+      const response = await fetch("/api/auth/verify-customer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: submittedEmail, password: submittedPassword }),
+      });
 
-      if (magentoResult === "unavailable") {
-        setPassword("");
-        setMessage("We cannot reach the customer account service right now. Please try again shortly.");
+      const body = (await response.json()) as VerifyCustomerResponse;
+
+      if (!response.ok || !body.ok || !body.customer) {
+        const errorMessage = body.error || "Customer sign in could not be completed.";
+
+        if (response.status === 400 || response.status === 401) {
+          setFormError(errorMessage);
+          setState("unregistered");
+          return;
+        }
+
+        setMessage(errorMessage);
         setState("error");
         return;
       }
 
+      setVerifiedCustomer(body.customer);
+      setEmail(body.customer.email);
       setState("confirm-link");
-    }, 650);
+    } catch {
+      setMessage("We cannot reach the customer account service right now. Please try again shortly.");
+      setState("error");
+    }
   }
 
   function confirmLink() {
     if (!showPrototypeTools) {
-      setPassword("");
       setMessage("Card linking is not connected on this kiosk yet.");
       setState("error");
       return;
     }
 
-    setPassword("");
     setState("welcome");
   }
 
   const waiting = state === "idle" || state === "reading";
+  const displayFirstName = verifiedCustomer?.firstName || mockCustomer.firstName;
+  const displayLastName = verifiedCustomer?.lastName || mockCustomer.lastName;
+  const displayEmail = verifiedCustomer?.email || email || mockCustomer.email;
+  const displayCompany = verifiedCustomer?.company?.name || mockCustomer.companyName;
+  const displayCompanyReference = verifiedCustomer?.company?.reference || null;
+  const companyCount = verifiedCustomer?.companies.length || 0;
 
   return (
     <div className="kiosk-stage">
@@ -251,7 +296,7 @@ export function KioskAuthDemo() {
               </button>
             </form>
 
-            <p className="security-note">Your password is used only to verify your Magento customer account. It must never be stored on the kiosk or attached to the NFC card.</p>
+            <p className="security-note">Your password is used only to verify your Magento customer account. It is cleared immediately after submission and is never written to the NFC card.</p>
           </section>
         ) : null}
 
@@ -260,11 +305,13 @@ export function KioskAuthDemo() {
             <p className="eyebrow">Account found</p>
             <h1>Link this card?</h1>
             <div className="customer-card">
-              <strong>{mockCustomer.firstName} {mockCustomer.lastName}</strong>
-              <span>{email || mockCustomer.email}</span>
-              <span>{mockCustomer.companyName}</span>
+              <strong>{displayFirstName} {displayLastName}</strong>
+              <span>{displayEmail}</span>
+              <span>{displayCompany}</span>
+              {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
+              {companyCount > 1 ? <span>{companyCount} company accounts available</span> : null}
             </div>
-            <p className="lead">Future taps of this card will sign in to this account on an authorised CSS kiosk.</p>
+            <p className="lead">Future taps of this card will sign in to this customer account on an authorised CSS kiosk.</p>
             <button className="primary-button" type="button" onClick={confirmLink}>Link this card to my account</button>
             <button className="secondary-button" type="button" onClick={reset}>Cancel</button>
           </section>
@@ -274,11 +321,12 @@ export function KioskAuthDemo() {
           <section className="auth-panel auth-panel-centred">
             <div className="success-badge">✓</div>
             <p className="eyebrow">Signed in</p>
-            <h1>Welcome, {mockCustomer.firstName}</h1>
+            <h1>Welcome, {displayFirstName}</h1>
             <p className="lead">Your trade account is ready.</p>
             <div className="customer-card compact">
-              <strong>{mockCustomer.companyName}</strong>
-              <span>{email || mockCustomer.email}</span>
+              <strong>{displayCompany}</strong>
+              <span>{displayEmail}</span>
+              {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
             </div>
             <button className="primary-button" type="button" onClick={() => setMessage("Catalogue workspace comes in K1.")}>Start shopping</button>
             <button className="secondary-button" type="button" onClick={reset}>Sign out</button>
@@ -328,9 +376,10 @@ export function KioskAuthDemo() {
           <label>
             Magento auth
             <select value={magentoResult} onChange={(event) => setMagentoResult(event.target.value as SimulatedMagentoResult)}>
-              <option value="success">Success</option>
-              <option value="invalid-credentials">Invalid credentials</option>
-              <option value="unavailable">Service unavailable</option>
+              <option value="real">Real Magento</option>
+              <option value="success">Fixture: success</option>
+              <option value="invalid-credentials">Fixture: invalid credentials</option>
+              <option value="unavailable">Fixture: service unavailable</option>
             </select>
           </label>
 
