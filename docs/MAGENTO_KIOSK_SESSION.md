@@ -1,17 +1,17 @@
-# Authenticated Magento kiosk session
+# Authenticated CSS Commerce kiosk session
 
 This slice converts a trusted, linked NFC card into a real Magento customer session without exposing Magento bearer tokens to browser JavaScript or the Android device.
 
-It depends on the matching Magento customer-session GraphQL contract in `0stoya/Magento` PR #142.
+The deployed Commerce-side contract belongs to `0stoya/Fluid`, under `Css/Commerce`.
 
-## Magento transport rule
+## GraphQL transport rule
 
 All kiosk authentication traffic to Magento uses GraphQL.
 
-- first-time email/password verification uses `ostoya_customer_password_login`;
-- returning-card assertion exchange uses `ostoya_kiosk_customer_session`;
+- first-time email/password verification uses Magento's standard `generateCustomerToken` mutation;
+- returning-card assertion exchange uses the CSS Commerce `css_kiosk_customer_session` mutation;
 - customer/company refresh uses the authenticated `customer` + `css_company_context` query;
-- logout/token invalidation uses Magento's `revokeCustomerToken` mutation.
+- logout/token invalidation uses Magento's standard `revokeCustomerToken` mutation.
 
 There is no kiosk-specific Magento REST endpoint and no Magento Admin/integration credential in `css_kiosk`.
 
@@ -26,9 +26,9 @@ server resolves hashed NFC credential
         ↓
 server signs one-use RS256 customer_session assertion
         ↓
-Magento GraphQL ostoya_kiosk_customer_session
+CSS Commerce GraphQL css_kiosk_customer_session
         ↓
-Magento verifies assertion + replay ID
+Css/Commerce verifies assertion + replay ID
         ↓
 Magento issues standard customer token
         ↓
@@ -43,9 +43,9 @@ The browser receives only safe customer/company data and an expiry timestamp. Th
 
 ## First-time card linking
 
-An unknown card asks for the customer's existing email/password once. `css_kiosk` sends those credentials only in a server-side GraphQL call to `ostoya_customer_password_login`.
+An unknown card asks for the customer's existing email/password once. `css_kiosk` sends those credentials only in a server-side GraphQL call to Magento's standard `generateCustomerToken` mutation.
 
-If Magento returns `AUTHENTICATED`, the returned customer token is used server-side to read current customer/company context and create the pending NFC link. If Magento policy requires a second factor, the kiosk fails closed with a clear verification-required message; it does not bypass Magento authentication policy.
+The returned customer token is used server-side to read current customer/company context and create the pending NFC link. Invalid credentials fail closed with a generic login error; the password is cleared immediately after submission and is never persisted.
 
 ## Session properties
 
@@ -74,26 +74,13 @@ The session fails closed when:
 
 - Magento returns a different/missing customer;
 - the company linked with the NFC card is no longer an active company membership;
-- Magento/session exchange is unavailable.
+- the CSS Commerce session exchange is unavailable.
 
 This prevents a stale NFC snapshot from preserving company access after Magento access has changed.
 
 ## RSA assertion key
 
-Generate the RSA key on the kiosk application host, outside the repository:
-
-```bash
-sudo install -d -m 0700 /srv/css-kiosk/keys
-sudo openssl genpkey \
-  -algorithm RSA \
-  -pkeyopt rsa_keygen_bits:3072 \
-  -out /srv/css-kiosk/keys/magento-assertion-private.pem
-sudo chmod 600 /srv/css-kiosk/keys/magento-assertion-private.pem
-sudo openssl pkey \
-  -in /srv/css-kiosk/keys/magento-assertion-private.pem \
-  -pubout \
-  -out /tmp/css-kiosk-magento-assertion-public.pem
-```
+Generate the RSA key on the kiosk application host, outside the repository. The private key belongs only to `css_kiosk`; CSS Commerce receives only the public key.
 
 Configure kiosk server environment:
 
@@ -101,7 +88,7 @@ Configure kiosk server environment:
 KIOSK_MAGENTO_ASSERTION_PRIVATE_KEY_PATH=/srv/css-kiosk/keys/magento-assertion-private.pem
 ```
 
-Only the public PEM is copied/configured on Magento. Never copy the RSA private key to Magento, source control, browser storage, an NFC card, or the Android device.
+Never copy the RSA private key to Fluid/Commerce, source control, browser storage, an NFC card, or the Android device.
 
 ## Assertion contract
 
@@ -110,7 +97,7 @@ The backend signs a compact RS256 assertion with a maximum lifetime of 60 second
 ```json
 {
   "iss": "css-kiosk",
-  "aud": "css-magento",
+  "aud": "css-commerce",
   "purpose": "customer_session",
   "sub": "<Magento customer ID>",
   "device_id": "<trusted kiosk device ID>",
@@ -120,20 +107,21 @@ The backend signs a compact RS256 assertion with a maximum lifetime of 60 second
 }
 ```
 
-The `jti` is new for every exchange. Magento persists consumed `jti` values long enough to reject assertion replay.
+The `jti` is new for every exchange. `Css/Commerce` persists consumed `jti` values long enough to reject assertion replay.
 
 ## Runtime acceptance
 
-With Magento PR #142 deployed/configured and this kiosk branch running:
+With the matching `Fluid/Css/Commerce` GraphQL contract deployed/configured and this kiosk branch running:
 
 1. simulator reports `Device trust: Trusted`;
-2. present an already-linked real NFC fixture;
-3. `ostoya_kiosk_customer_session` issues a fresh customer token server-side;
-4. current Magento customer/company is re-read over GraphQL;
-5. kiosk reaches Welcome without password;
-6. browser receives `css_kiosk_session` as HttpOnly cookie only;
-7. reset/sign out clears that cookie and revokes the Magento customer token through GraphQL best-effort;
-8. presenting the same linked card again creates a new authenticated session;
-9. restarting the kiosk server destroys the old session but does not remove the card link.
+2. unknown-card login uses `generateCustomerToken` and still resolves the correct CSS customer/company;
+3. present an already-linked real NFC fixture;
+4. `css_kiosk_customer_session` issues a fresh customer token server-side;
+5. current Magento customer/company is re-read over GraphQL;
+6. kiosk reaches Welcome without password;
+7. browser receives `css_kiosk_session` as HttpOnly cookie only;
+8. reset/sign out clears that cookie and revokes the Magento customer token through GraphQL best-effort;
+9. presenting the same linked card again creates a new authenticated session;
+10. restarting the kiosk server destroys the old session but does not remove the card link.
 
 The standard Magento customer token itself may outlive the kiosk session; that is why logout/replacement performs server-side token revocation and the bearer token is never exposed to the browser.
