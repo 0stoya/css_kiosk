@@ -22,6 +22,7 @@ type CartRequest = {
   sku?: unknown;
   quantity?: unknown;
   itemUid?: unknown;
+  selectedOptions?: unknown;
 };
 
 function deviceFailure(error: unknown) {
@@ -44,6 +45,21 @@ function deviceFailure(error: unknown) {
 
 function validAction(value: unknown): value is CartAction {
   return value === "get" || value === "add" || value === "update" || value === "remove";
+}
+
+function selectedOptions(value: unknown) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 64) return null;
+
+  const options: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const option = item.trim();
+    if (!option || option.length > 512) return null;
+    options.push(option);
+  }
+
+  return [...new Set(options)];
 }
 
 export async function POST(request: Request) {
@@ -81,8 +97,10 @@ export async function POST(request: Request) {
     typeof payload.quantity === "number" && Number.isInteger(payload.quantity)
       ? payload.quantity
       : 0;
+  const optionUids = selectedOptions(payload.selectedOptions);
 
   if (
+    optionUids === null ||
     sku.length > 160 ||
     itemUid.length > 256 ||
     ((payload.action === "add" || payload.action === "update") && (quantity < 1 || quantity > 999)) ||
@@ -103,6 +121,7 @@ export async function POST(request: Request) {
         token: session.magentoToken,
         sku,
         quantity,
+        selectedOptions: optionUids,
       });
     } else if (payload.action === "update") {
       basket = await updateAuthenticatedBasketItem({
