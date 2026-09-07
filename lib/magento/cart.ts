@@ -75,6 +75,12 @@ type CartMutationResult = {
   user_errors?: Array<{ code?: string | null; message?: string | null }> | null;
 } | null;
 
+type CartAddInput = {
+  sku: string;
+  quantity: number;
+  selected_options?: string[];
+};
+
 export class MagentoCartError extends Error {
   constructor(
     message: string,
@@ -138,17 +144,11 @@ const ADD_TO_CART_MUTATION = /* GraphQL */ `
   ${CART_FIELDS}
   mutation KioskAddProductsToCart(
     $cartId: String!
-    $sku: String!
-    $quantity: Float!
-    $selectedOptions: [ID!]
+    $cartItems: [CartItemInput!]!
   ) {
     addProductsToCart(
       cartId: $cartId
-      cartItems: [{
-        sku: $sku
-        quantity: $quantity
-        selected_options: $selectedOptions
-      }]
+      cartItems: $cartItems
     ) {
       cart {
         ...KioskCartFields
@@ -303,6 +303,29 @@ function mutationCart(result: CartMutationResult) {
   return safeCart(result.cart);
 }
 
+async function addCartItems(input: {
+  token: string;
+  items: CartAddInput[];
+}): Promise<KioskBasket> {
+  const cart = await customerCartRow(input.token);
+  const data = await requestMagento<{ addProductsToCart?: CartMutationResult }>({
+    token: input.token,
+    query: ADD_TO_CART_MUTATION,
+    variables: {
+      cartId: cart.id,
+      cartItems: input.items.map((item) => ({
+        sku: item.sku,
+        quantity: item.quantity,
+        ...(item.selected_options?.length
+          ? { selected_options: item.selected_options }
+          : {}),
+      })),
+    },
+  });
+
+  return mutationCart(data.addProductsToCart || null);
+}
+
 export async function getAuthenticatedBasket(token: string): Promise<KioskBasket> {
   return safeCart(await customerCartRow(token));
 }
@@ -313,19 +336,30 @@ export async function addAuthenticatedBasketItem(input: {
   quantity: number;
   selectedOptions?: string[];
 }): Promise<KioskBasket> {
-  const cart = await customerCartRow(input.token);
-  const data = await requestMagento<{ addProductsToCart?: CartMutationResult }>({
+  return addCartItems({
     token: input.token,
-    query: ADD_TO_CART_MUTATION,
-    variables: {
-      cartId: cart.id,
-      sku: input.sku,
-      quantity: input.quantity,
-      selectedOptions: input.selectedOptions?.length ? input.selectedOptions : null,
-    },
+    items: [
+      {
+        sku: input.sku,
+        quantity: input.quantity,
+        selected_options: input.selectedOptions,
+      },
+    ],
   });
+}
 
-  return mutationCart(data.addProductsToCart || null);
+export async function addAuthenticatedGroupedBasketItems(input: {
+  token: string;
+  items: Array<{ sku: string; quantity: number }>;
+}): Promise<KioskBasket> {
+  if (!input.items.length) {
+    throw new MagentoCartError("Choose at least one grouped product quantity.", "REJECTED");
+  }
+
+  return addCartItems({
+    token: input.token,
+    items: input.items.map((item) => ({ sku: item.sku, quantity: item.quantity })),
+  });
 }
 
 export async function updateAuthenticatedBasketItem(input: {
