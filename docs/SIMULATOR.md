@@ -21,15 +21,16 @@ Hardware fixtures:
 
 The simulated cards emit opaque `secure-token` credentials. The UI does not depend on a card UID or NDEF payload format.
 
-## Backend boundary
+## Magento authentication boundary
 
-Until the real kiosk authentication API is connected, the simulator also controls the expected Magento verification result for the unknown-card registration flow:
+The simulator can now run the unknown-card email/password step in two ways:
 
-- Success
-- Invalid credentials
-- Service unavailable
+- `Real Magento` — POST the entered credentials to the kiosk server route, authenticate against Magento's customer-token endpoint, then load the authenticated customer and `css_company_context` through GraphQL;
+- deterministic fixtures — `Success`, `Invalid credentials`, or `Service unavailable` for repeatable UI/failure-state testing.
 
-A successful simulated login can continue to the explicit `Link this card?` confirmation state. Invalid credentials remain on the registration form and service failure fails closed.
+The real-auth route returns only a safe customer/company summary. It does not return the Magento customer token to the browser and does not persist the submitted password.
+
+Card persistence is still simulated in development. A successful real Magento verification can therefore reach the explicit `Link this card?` confirmation screen, but production card linking remains fail-closed until the server-side NFC persistence slice is implemented.
 
 ## Production rule
 
@@ -41,7 +42,7 @@ The production build must not:
 - accept simulated Magento authentication;
 - create a simulated NFC link.
 
-Until the real Android reader and real backend authentication are connected, those production paths fail closed.
+Real Magento customer verification is a server capability and is allowed in production. Actual NFC linking is not enabled until a real server-side card-link proof/persistence mechanism exists.
 
 ## Manual acceptance matrix
 
@@ -50,14 +51,40 @@ Run `yarn dev` and exercise:
 | Reader | Card | Magento | Expected result |
 | --- | --- | --- | --- |
 | Ready | Registered | n/a | Welcome |
-| Ready | Unknown | Success | Login -> account found -> link confirmation -> welcome |
-| Ready | Unknown | Invalid credentials | Registration form error |
-| Ready | Unknown | Service unavailable | Fail-closed error screen |
+| Ready | Unknown | Real Magento + valid account | Real customer/company shown on link confirmation |
+| Ready | Unknown | Real Magento + invalid password | Registration form error |
+| Ready | Unknown | Fixture: success | Mock account found -> link confirmation -> welcome |
+| Ready | Unknown | Fixture: invalid credentials | Registration form error |
+| Ready | Unknown | Fixture: service unavailable | Fail-closed error screen |
 | Ready | Revoked | n/a | Fail-closed revoked-card error |
 | Ready | Read error | n/a | Fail-closed read error |
 | Unavailable | Any | n/a | Reader-unavailable error |
 
 Also validate the 1080 x 1920 portrait viewport and confirm no horizontal overflow.
+
+## Real Magento configuration
+
+Copy the endpoint values from the accepted CSS Admin environment into a local kiosk environment file without committing secrets:
+
+```bash
+cp .env.example .env.local
+```
+
+Required names:
+
+```text
+MAGENTO_BASE_URL
+MAGENTO_STORE_CODE
+```
+
+Optional overrides:
+
+```text
+MAGENTO_GRAPHQL_URL
+MAGENTO_CUSTOMER_TOKEN_URL
+```
+
+Do not add Magento Admin credentials to the kiosk environment.
 
 ## Hardware handoff
 
