@@ -57,28 +57,37 @@ The Magento cart ID remains server-side.
 
 ## Runtime acceptance
 
-After Magento's locker carrier is enabled and the kiosk environment contains the matching physical locker configuration:
+Accepted on the live Magento runtime on 7 Sep 2026 after the company-carrier compatibility fix in `0stoya/Fluid#73`.
+
+The kiosk successfully prepared the configured Greenford locker and displayed:
+
+```text
+CSS Local Locker
+Greenford Depot, Greenford Road
+Greenford, Middlesex
+UB69AP · GB
+
+Collect from CSS Locker
+Locker delivery £0.00
+Subtotal ex VAT £191.18
+Checkout total £191.18
+```
+
+The accepted request path is:
 
 ```text
 linked NFC
 -> Welcome
 -> catalogue
--> add at least one item
+-> non-empty basket
 -> signed POST /api/checkout/locker
--> 200
+-> Magento setShippingAddressesOnCart
+-> csslocker / locker available
+-> setShippingMethodsOnCart
+-> 200 locker review
 ```
 
-Expected response state:
-
-```text
-locker label/address = configured physical locker
-shipping carrierCode = csslocker
-shipping methodCode = locker
-basket totalQuantity > 0
-grandTotal present
-```
-
-Fail-closed checks:
+Fail-closed checks remain:
 
 - missing kiosk locker environment -> `LOCKER_NOT_CONFIGURED` / 503;
 - empty basket -> rejected;
@@ -86,6 +95,52 @@ Fail-closed checks:
 - Magento does not offer `csslocker / locker` for the configured address -> rejected;
 - arbitrary address/carrier/method fields are not accepted by the endpoint because the request body contains only `action: "prepare"`.
 
+## OGL order-number handoff
+
+The physical locker workflow uses the OGL order number as its correlation key. The kiosk must not call OGL directly or manufacture that value.
+
+`Fluid_OglOrder` already exports Magento sales orders asynchronously and persists the returned OGL `ordno` as `sales_order.ogl_id`. The deployed Commerce boundary is being extended in `0stoya/Fluid#74` with the customer-scoped GraphQL query:
+
+```graphql
+query KioskLockerOrderStatus($orderNumber: String!) {
+  css_kiosk_locker_order_status(order_number: $orderNumber) {
+    magento_order_number
+    ogl_order_number
+    ogl_exported
+    shipping_method
+    order_status
+  }
+}
+```
+
+The intended chain is:
+
+```text
+kiosk confirms prepared locker cart
+-> existing company credit/order workflow
+-> Magento sales order
+-> Fluid_OglOrder queue
+-> OGL ordno
+-> sales_order.ogl_id
+-> css_kiosk_locker_order_status
+-> future locker provider maps OGL order -> compartment / READY
+```
+
+Because OGL export is asynchronous, a newly placed order may initially have no OGL number. The kiosk should treat that as `export pending`, not as failure, and re-read the Magento GraphQL status later.
+
+For future pickup, the browser must not submit an authoritative OGL order number or compartment number to an open-door operation. The trusted kiosk server will correlate the card-authenticated customer to a durable delivery record, resolve its OGL number and locker assignment server-side, and only then call the physical locker adapter.
+
+Target pickup UX:
+
+```text
+customer taps NFC
+-> authenticated customer
+-> READY delivery found
+-> Order <OGL order number>
+-> Locker <compartment>
+-> [Open locker]
+```
+
 ## Not in K3.1
 
-K3.1 does not place the order. The next checkout slice will use the prepared cart and accepted company ordering/payment/credit capabilities to implement the final review/confirmation and order/credit-order submission path.
+K3.1 does not place the order or control the physical cabinet. The next checkout slice will use the prepared cart and accepted company ordering/payment/credit capabilities to implement final confirmation. The later locker-provider slice will handle compartment assignment, door state/opening and collection completion once the Lanzi integration contract is available.
