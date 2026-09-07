@@ -5,13 +5,37 @@ import {
   NfcCredentialStoreError,
 } from "@/lib/kiosk/credential-store";
 import {
+  KioskDeviceRequestError,
+  verifyTrustedRequest,
+} from "@/lib/kiosk/device-request";
+import {
   clearPendingLinkProof,
   getPendingLinkProof,
 } from "@/lib/kiosk/pending-link-cookie";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+function deviceFailure(error: unknown) {
+  if (error instanceof KioskDeviceRequestError) {
+    return NextResponse.json(
+      { ok: false, code: error.code, error: error.message },
+      { status: error.status },
+    );
+  }
+
+  return NextResponse.json(
+    { ok: false, code: "DEVICE_UNAVAILABLE", error: "Kiosk device validation is unavailable." },
+    { status: 503 },
+  );
+}
+
+export async function POST(request: Request) {
+  try {
+    await verifyTrustedRequest(request);
+  } catch (error) {
+    return deviceFailure(error);
+  }
+
   const proof = await getPendingLinkProof();
   if (!proof) {
     return NextResponse.json(
@@ -41,7 +65,13 @@ export async function POST() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  try {
+    await verifyTrustedRequest(request);
+  } catch (error) {
+    return deviceFailure(error);
+  }
+
   const proof = await getPendingLinkProof();
 
   try {
