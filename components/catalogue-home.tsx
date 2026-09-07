@@ -119,11 +119,27 @@ type LockerCheckoutReview = {
   };
 };
 
+type LockerOrderSubmission = {
+  creditOrderId: number;
+  creditOrderNumber: string | null;
+  status: string;
+  autoApproved: boolean;
+  approvalRequired: boolean;
+  grandTotal: number;
+  paymentMethod: string;
+  orderId: number | null;
+  orderNumber: string | null;
+  orderPlaced: boolean;
+  oglOrderNumber: string | null;
+  oglExported: boolean;
+};
+
 type LockerCheckoutResponse = {
   ok?: boolean;
   code?: string;
   error?: string;
   checkout?: LockerCheckoutReview;
+  submission?: LockerOrderSubmission;
 };
 
 type BasketAction =
@@ -211,6 +227,8 @@ export function CatalogueHome({
   const [lockerCheckout, setLockerCheckout] = useState<LockerCheckoutReview | null>(null);
   const [lockerCheckoutLoading, setLockerCheckoutLoading] = useState(false);
   const [lockerCheckoutError, setLockerCheckoutError] = useState<string | null>(null);
+  const [lockerOrderSubmission, setLockerOrderSubmission] = useState<LockerOrderSubmission | null>(null);
+  const [lockerOrderSubmitting, setLockerOrderSubmitting] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogueProduct | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [productOptions, setProductOptions] = useState<KioskProductOptions | null>(null);
@@ -320,6 +338,7 @@ export function CatalogueHome({
     setBasketError(null);
     setLockerCheckout(null);
     setLockerCheckoutError(null);
+    setLockerOrderSubmission(null);
 
     try {
       const response = await signedFetch("/api/cart", {
@@ -353,6 +372,7 @@ export function CatalogueHome({
   async function prepareLockerCheckout() {
     setLockerCheckoutLoading(true);
     setLockerCheckoutError(null);
+    setLockerOrderSubmission(null);
 
     try {
       const response = await signedFetch("/api/checkout/locker", {
@@ -387,6 +407,42 @@ export function CatalogueHome({
       setLockerCheckoutError("Local locker checkout could not be prepared right now.");
     } finally {
       setLockerCheckoutLoading(false);
+    }
+  }
+
+  async function confirmLockerOrder() {
+    if (!lockerCheckout?.ordering.canSubmitCreditOrder || lockerOrderSubmitting) return;
+
+    setLockerOrderSubmitting(true);
+    setLockerCheckoutError(null);
+
+    try {
+      const response = await signedFetch("/api/checkout/locker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "confirm" }),
+      });
+      const body = (await response.json()) as LockerCheckoutResponse;
+
+      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
+        handleSessionExpired();
+        return;
+      }
+
+      if (!response.ok || !body.ok || !body.checkout || !body.submission) {
+        setLockerCheckoutError(body.error || "The locker order could not be submitted right now.");
+        return;
+      }
+
+      setLockerCheckout(body.checkout);
+      setLockerOrderSubmission(body.submission);
+      if (body.submission.orderPlaced) {
+        setBasket({ totalQuantity: 0, items: [], subtotal: null, grandTotal: null });
+      }
+    } catch {
+      setLockerCheckoutError("The locker order could not be submitted right now.");
+    } finally {
+      setLockerOrderSubmitting(false);
     }
   }
 
@@ -454,6 +510,7 @@ export function CatalogueHome({
     setBasketOpen(false);
     setLockerCheckout(null);
     setLockerCheckoutError(null);
+    setLockerOrderSubmission(null);
     setSelectedProduct(product);
     setSelectedQuantity(1);
     setBasketError(null);
@@ -533,6 +590,7 @@ export function CatalogueHome({
     setBasketOpen(false);
     setLockerCheckout(null);
     setLockerCheckoutError(null);
+    setLockerOrderSubmission(null);
   }
 
   const resultLabel = useMemo(() => {
@@ -598,6 +656,7 @@ export function CatalogueHome({
             closeProduct();
             setLockerCheckout(null);
             setLockerCheckoutError(null);
+            setLockerOrderSubmission(null);
             setBasketOpen(true);
           }}
           aria-label={`Open basket with ${basketCount} items`}
@@ -832,8 +891,12 @@ export function CatalogueHome({
           <section className={styles.basketPanel} role="dialog" aria-modal="true" aria-labelledby="basket-title">
             <header className={styles.basketHeader}>
               <div>
-                <p className={styles.eyebrow}>{lockerCheckout ? "Local locker checkout" : "Current order"}</p>
-                <h2 id="basket-title">{lockerCheckout ? "Locker collection review" : "Basket"}</h2>
+                <p className={styles.eyebrow}>
+                  {lockerOrderSubmission ? "Order submitted" : lockerCheckout ? "Local locker checkout" : "Current order"}
+                </p>
+                <h2 id="basket-title">
+                  {lockerOrderSubmission ? "Locker order confirmation" : lockerCheckout ? "Locker collection review" : "Basket"}
+                </h2>
               </div>
               <button className={styles.closeButton} type="button" onClick={closeBasket} aria-label="Close basket">×</button>
             </header>
@@ -884,25 +947,73 @@ export function CatalogueHome({
                   </span>
                 </div>
 
-                <p className={styles.optionNotice}>
-                  This kiosk can deliver only to this local locker. The delivery address and shipping method were applied by the trusted kiosk server and confirmed by Magento.
-                </p>
+                {lockerOrderSubmission ? (
+                  <div className={styles.basketEmpty}>
+                    <strong>
+                      {lockerOrderSubmission.orderPlaced
+                        ? "Your locker order has been placed"
+                        : lockerOrderSubmission.approvalRequired
+                          ? "Your order has been submitted for approval"
+                          : "Your order has been submitted"}
+                    </strong>
+                    {lockerOrderSubmission.orderNumber ? (
+                      <span>Magento order {lockerOrderSubmission.orderNumber}</span>
+                    ) : null}
+                    {lockerOrderSubmission.creditOrderNumber ? (
+                      <span>Credit order {lockerOrderSubmission.creditOrderNumber}</span>
+                    ) : null}
+                    {lockerOrderSubmission.orderPlaced ? (
+                      lockerOrderSubmission.oglOrderNumber ? (
+                        <span>OGL order {lockerOrderSubmission.oglOrderNumber}</span>
+                      ) : (
+                        <span>Waiting for OGL export reference…</span>
+                      )
+                    ) : (
+                      <span>The OGL and locker reference will be created after the Magento order is placed.</span>
+                    )}
+                  </div>
+                ) : (
+                  <p className={styles.optionNotice}>
+                    This kiosk can deliver only to this local locker. The delivery address and shipping method were applied by the trusted kiosk server and confirmed by Magento.
+                  </p>
+                )}
 
                 <footer className={styles.basketFooter}>
-                  <button
-                    className={styles.removeButton}
-                    type="button"
-                    onClick={() => {
-                      setLockerCheckout(null);
-                      setLockerCheckoutError(null);
-                    }}
-                  >
-                    Back to basket
-                  </button>
-                  <button className={styles.checkoutButton} type="button" disabled>
-                    Order confirmation comes next
-                  </button>
+                  {lockerOrderSubmission ? (
+                    <button className={styles.checkoutButton} type="button" onClick={closeBasket}>
+                      Done
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className={styles.removeButton}
+                        type="button"
+                        onClick={() => {
+                          setLockerCheckout(null);
+                          setLockerCheckoutError(null);
+                          setLockerOrderSubmission(null);
+                        }}
+                        disabled={lockerOrderSubmitting}
+                      >
+                        Back to basket
+                      </button>
+                      <button
+                        className={styles.checkoutButton}
+                        type="button"
+                        onClick={() => void confirmLockerOrder()}
+                        disabled={lockerOrderSubmitting || !lockerCheckout.ordering.canSubmitCreditOrder}
+                      >
+                        {lockerOrderSubmitting ? "Submitting order…" : "Confirm order to local locker"}
+                      </button>
+                    </>
+                  )}
                 </footer>
+
+                {!lockerOrderSubmission && !lockerCheckout.ordering.canSubmitCreditOrder ? (
+                  <p className={styles.basketInlineError} role="alert">
+                    This trade account is not allowed to submit an order from the kiosk.
+                  </p>
+                ) : null}
               </>
             ) : (
               <>
