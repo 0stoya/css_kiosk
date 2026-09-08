@@ -1,117 +1,112 @@
 .catalogueShell {
-  width: min(980px, 100%);
+  width: min(1032px, 100%);
   display: grid;
-  gap: 26px;
+  gap: 16px;
   align-self: start;
   padding-bottom: 24px;
 }
 
-.accountBar,
-.heroRow,
+.catalogueHeader,
 .searchForm,
 .resultBar,
 .productCard,
+.pagination,
 .errorPanel,
 .emptyPanel {
   background: #fff;
   border: 1px solid var(--css-border);
 }
 
-.accountBar {
-  min-height: 112px;
-  padding: 22px 26px;
+.catalogueHeader {
+  min-height: 92px;
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 22px;
-  border-top: 6px solid var(--css-secondary);
-  border-radius: 22px;
-  box-shadow: 0 16px 42px rgb(0 35 72 / 10%);
+  gap: 18px;
+  padding: 14px 16px 14px 20px;
+  border-radius: 18px;
+  border-top: 5px solid var(--css-secondary);
+  box-shadow: 0 10px 28px rgb(0 35 72 / 8%);
 }
 
-.accountBar > div {
+.brandGroup {
   min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.accountLabel,
-.eyebrow {
-  color: var(--css-primary);
-  font-size: 15px;
-  font-weight: 900;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-}
-
-.accountBar strong {
-  overflow: hidden;
-  font-family: var(--font-secondary);
-  font-size: 25px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.accountMeta {
-  color: var(--css-muted);
-  font-size: 17px;
-}
-
-.signOutButton {
-  min-width: 144px;
-  min-height: 62px;
-  padding: 12px 18px;
-  border: 2px solid #9db4c7;
-  border-radius: 15px;
-  background: white;
-  color: var(--css-primary);
-  font-size: 19px;
-  font-weight: 900;
-}
-
-.heroRow {
-  padding: 30px 32px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  border-radius: 22px;
+  gap: 18px;
 }
 
-.heroRow > div:first-child {
-  display: grid;
+.headerCssLogo {
+  width: 230px;
+  height: auto;
+  object-fit: contain;
+}
+
+.brandDivider {
+  width: 1px;
+  height: 50px;
+  flex: 0 0 auto;
+  background: var(--css-border);
+}
+
+.customerBrand {
+  min-width: 120px;
+  max-width: 230px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+}
+
+.customerLogo {
+  width: min(190px, 100%);
+  max-height: 54px;
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.customerFallback {
+  overflow: hidden;
+  color: var(--css-text);
+  font-family: var(--font-secondary);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}
+
+.headerActions {
+  display: flex;
+  align-items: stretch;
   gap: 10px;
 }
 
-.heroRow h1 {
-  font-size: clamp(36px, 5vw, 54px);
+.accountMenuWrap {
+  position: relative;
 }
 
-.heroRow p {
-  margin: 0;
-  color: var(--css-muted);
-  font-size: 20px;
-  line-height: 1.4;
-}
-
-.basketButton {
-  min-width: 150px;
-  min-height: 82px;
+.iconButton {
+  min-width: 112px;
+  min-height: 62px;
+  position: relative;
   display: grid;
-  grid-template-columns: 30px auto 30px;
+  grid-template-columns: 27px auto;
   align-items: center;
-  gap: 9px;
-  padding: 14px 16px;
-  border: 2px solid #9fbfd8;
-  border-radius: 17px;
-  background: #f5faff;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #a9bfd1;
+  border-radius: 14px;
+  background: #f7fbff;
   color: var(--css-primary);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 900;
   cursor: pointer;
 }
 
-.basketButton svg,
+.iconButton svg,
 .searchIcon svg {
   width: 100%;
   height: 100%;
@@ -122,26 +117,66 @@
   stroke-linejoin: round;
 }
 
-.basketButton b {
-  min-width: 28px;
-  min-height: 28px;
+.iconButton b {
+  min-width: 25px;
+  min-height: 25px;
+  position: absolute;
+  top: 5px;
+  right: 5px;
   display: grid;
   place-items: center;
+  padding: 2px 6px;
   border-radius: 999px;
-  background: #dcecf8;
+  background: var(--css-primary);
+  color: white;
+  font-size: 12px;
+}
+
+.accountMenu {
+  width: 310px;
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--css-border);
+  border-radius: 15px;
+  background: white;
+  box-shadow: 0 20px 50px rgb(0 35 72 / 18%);
+  color: var(--css-muted);
   font-size: 15px;
 }
 
+.accountMenu strong {
+  overflow: hidden;
+  color: var(--css-text);
+  font-family: var(--font-secondary);
+  font-size: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountMenu button {
+  min-height: 48px;
+  margin-top: 8px;
+  border: 1px solid #a9bfd1;
+  border-radius: 11px;
+  background: white;
+  color: var(--css-primary);
+  font-weight: 900;
+}
+
 .searchForm {
-  min-height: 84px;
+  min-height: 72px;
   display: grid;
-  grid-template-columns: 36px 1fr auto;
+  grid-template-columns: 32px 1fr auto;
   align-items: center;
-  gap: 16px;
-  padding: 10px 10px 10px 22px;
+  gap: 12px;
+  padding: 8px 8px 8px 18px;
   border: 2px solid #aebdca;
-  border-radius: 20px;
-  box-shadow: 0 12px 30px rgb(0 35 72 / 8%);
+  border-radius: 17px;
+  box-shadow: 0 8px 22px rgb(0 35 72 / 6%);
 }
 
 .searchForm:focus-within {
@@ -150,19 +185,19 @@
 }
 
 .searchIcon {
-  width: 30px;
-  height: 30px;
+  width: 27px;
+  height: 27px;
   color: var(--css-primary);
 }
 
 .searchForm input {
   min-width: 0;
-  min-height: 58px;
+  min-height: 52px;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--css-text);
-  font-size: 24px;
+  font-size: 21px;
 }
 
 .searchForm input::placeholder {
@@ -172,13 +207,13 @@
 .searchForm button,
 .errorPanel button,
 .emptyPanel button {
-  min-height: 62px;
-  padding: 12px 24px;
+  min-height: 54px;
+  padding: 10px 22px;
   border: 2px solid var(--css-primary);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--css-primary);
   color: white;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 900;
 }
 
@@ -188,9 +223,9 @@
 
 .categoryStrip {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   overflow-x: auto;
-  padding: 2px 2px 10px;
+  padding: 0 1px 3px;
   scrollbar-width: thin;
   overscroll-behavior-x: contain;
 }
@@ -198,28 +233,15 @@
 .categoryButton,
 .categoryActive {
   flex: 0 0 auto;
-  min-height: 64px;
-  max-width: 270px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 17px;
-  border: 2px solid #afc4d5;
-  border-radius: 16px;
+  min-height: 44px;
+  max-width: 240px;
+  padding: 8px 13px;
+  border: 1px solid #afc4d5;
+  border-radius: 12px;
   background: white;
   color: var(--css-text);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 850;
-}
-
-.categoryButton small,
-.categoryActive small {
-  min-width: 26px;
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: #edf3f8;
-  color: var(--css-muted);
-  font-size: 13px;
 }
 
 .categoryActive {
@@ -228,31 +250,26 @@
   color: white;
 }
 
-.categoryActive small {
-  background: rgb(255 255 255 / 18%);
-  color: white;
-}
-
 .resultBar {
-  min-height: 66px;
-  padding: 12px 18px;
+  min-height: 48px;
+  padding: 8px 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  border-radius: 16px;
+  gap: 12px;
+  border-radius: 13px;
 }
 
 .resultBar strong {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .resultBar button {
-  min-height: 44px;
+  min-height: 34px;
   border: 0;
   background: transparent;
   color: var(--css-primary);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -260,18 +277,18 @@
 .loadingGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
 }
 
 .productCard {
   min-width: 0;
   overflow: hidden;
-  border-radius: 20px;
-  box-shadow: 0 14px 34px rgb(0 35 72 / 9%);
+  border-radius: 16px;
+  box-shadow: 0 9px 24px rgb(0 35 72 / 7%);
 }
 
 .productImage {
-  min-height: 215px;
+  min-height: 180px;
   display: grid;
   place-items: center;
   background-color: #f4f7fa;
@@ -282,29 +299,29 @@
 }
 
 .productImage > span {
-  width: 84px;
-  height: 84px;
+  width: 72px;
+  height: 72px;
   display: grid;
   place-items: center;
-  border-radius: 22px;
+  border-radius: 18px;
   background: #e4eff8;
   color: var(--css-primary);
   font-family: var(--font-secondary);
-  font-size: 42px;
+  font-size: 36px;
   font-weight: 900;
 }
 
 .productBody {
-  min-height: 205px;
-  padding: 20px;
+  min-height: 185px;
+  padding: 15px 17px 16px;
   display: grid;
   grid-template-rows: auto 1fr auto auto;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sku {
   color: var(--css-muted);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 850;
   letter-spacing: .04em;
 }
@@ -314,8 +331,8 @@
   overflow: hidden;
   color: var(--css-text);
   font-family: var(--font-secondary);
-  font-size: 21px;
-  line-height: 1.25;
+  font-size: 18px;
+  line-height: 1.22;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -325,31 +342,31 @@
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: end;
-  gap: 12px;
+  gap: 9px;
 }
 
 .priceBlock {
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .priceBlock strong {
   color: var(--css-primary);
   font-family: var(--font-secondary);
-  font-size: 24px;
+  font-size: 21px;
 }
 
 .priceBlock span {
   color: var(--css-muted);
-  font-size: 14px;
+  font-size: 12px;
   text-decoration: line-through;
 }
 
 .inStock,
 .outOfStock {
-  padding: 7px 9px;
+  padding: 6px 8px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 900;
   white-space: nowrap;
 }
@@ -365,25 +382,63 @@
 }
 
 .productAction {
-  min-height: 56px;
-  padding: 10px 16px;
+  min-height: 48px;
+  padding: 8px 14px;
   border: 2px solid var(--css-primary);
-  border-radius: 13px;
+  border-radius: 11px;
   background: white;
   color: var(--css-primary);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 900;
+}
+
+.pagination {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: 14px;
+}
+
+.pagination span {
+  color: var(--css-muted);
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.pagination span strong {
+  color: var(--css-text);
+}
+
+.pagination button {
+  min-height: 46px;
+  padding: 8px 16px;
+  border: 1px solid #a9bfd1;
+  border-radius: 11px;
+  background: #f7fbff;
+  color: var(--css-primary);
+  font-weight: 900;
+}
+
+.pagination button:last-child {
+  justify-self: end;
+}
+
+.pagination button:disabled {
+  opacity: .4;
 }
 
 .errorPanel,
 .emptyPanel {
-  min-height: 230px;
-  padding: 32px;
+  min-height: 210px;
+  padding: 28px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 14px;
-  border-radius: 20px;
+  gap: 12px;
+  border-radius: 17px;
   text-align: center;
 }
 
@@ -395,19 +450,19 @@
 .errorPanel strong,
 .emptyPanel strong {
   font-family: var(--font-secondary);
-  font-size: 27px;
+  font-size: 24px;
 }
 
 .errorPanel span,
 .emptyPanel span {
   color: var(--css-muted);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .loadingCard {
-  height: 420px;
+  height: 360px;
   border: 1px solid var(--css-border);
-  border-radius: 20px;
+  border-radius: 16px;
   background: linear-gradient(100deg, #edf2f6 20%, #f8fafc 45%, #edf2f6 70%);
   background-size: 220% 100%;
   animation: shimmer 1.1s linear infinite;
@@ -415,14 +470,6 @@
 
 @keyframes shimmer {
   to { background-position-x: -220%; }
-}
-
-.securityNote {
-  margin: 4px 0 0;
-  color: var(--css-muted);
-  font-size: 15px;
-  line-height: 1.5;
-  text-align: center;
 }
 
 .modalBackdrop {
@@ -588,6 +635,15 @@
 .addButton:disabled,
 .checkoutButton:disabled {
   opacity: .55;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--css-primary);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
 }
 
 .optionNotice,
@@ -775,22 +831,49 @@
 
 @media (max-width: 760px) {
   .catalogueShell {
-    gap: 18px;
+    gap: 12px;
   }
 
-  .accountBar,
-  .heroRow {
-    padding: 20px;
-  }
-
-  .heroRow {
+  .catalogueHeader {
     align-items: stretch;
-    flex-direction: column;
+    padding: 12px;
   }
 
-  .basketButton {
-    min-width: 0;
-    align-self: stretch;
+  .headerCssLogo {
+    width: 180px;
+  }
+
+  .brandDivider {
+    height: 42px;
+  }
+
+  .customerBrand {
+    max-width: 150px;
+    height: 46px;
+  }
+
+  .headerActions {
+    gap: 7px;
+  }
+
+  .iconButton {
+    min-width: 62px;
+    min-height: 58px;
+    grid-template-columns: 26px;
+    padding: 8px;
+  }
+
+  .iconButton > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .accountMenu {
+    width: min(300px, calc(100vw - 28px));
   }
 
   .productGrid,
@@ -799,12 +882,36 @@
   }
 
   .searchForm {
-    grid-template-columns: 30px 1fr;
-    padding: 12px 18px;
+    grid-template-columns: 28px 1fr auto;
+    padding-left: 14px;
+  }
+
+  .searchForm input {
+    font-size: 18px;
   }
 
   .searchForm button {
+    padding-inline: 14px;
+  }
+
+  .pagination {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pagination span {
     grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: center;
+  }
+
+  .pagination button:first-child {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .pagination button:last-child {
+    grid-column: 2;
+    grid-row: 2;
   }
 
   .modalBackdrop {
