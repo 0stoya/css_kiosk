@@ -10,3 +10,11 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Android kiosk shell
+.gradle/
+.idea/
+android-shell/.gradle/
+android-shell/local.properties
+android-shell/**/build/
+*.iml
