@@ -44,6 +44,9 @@ The kiosk can be developed and accepted before physical NFC hardware is availabl
 - fresh Magento customer/company authorization on every returning-card session
 - authenticated catalogue entry using that same kiosk session
 - server-side GraphQL categories/product search with safe catalogue JSON returned to the browser
+- authenticated basket and local-locker checkout/order confirmation
+- company-gated CSS locker delivery with Payment on Account submission
+- customer-scoped Magento/OGL locker-order correlation
 - sign-out/token-revocation path
 
 ### Live returning-card acceptance
@@ -80,6 +83,24 @@ browser
 
 The browser never receives the Magento bearer token. Product search and category filtering are performed server-side against Magento GraphQL using the authenticated customer token, so live customer/company pricing and visibility can be verified without exposing credentials client-side.
 
+## Signed-in catalogue UI checkpoint
+
+The current UI branch uses a compact kiosk workspace rather than stacking large account and catalogue hero panels:
+
+```text
+CSS logo | customer logo       My account | Basket
+Search
+Categories
+Products
+Pagination
+```
+
+For Greener Ealing (`EAL001`) the existing `public/greener-ealing-logo.svg` is shown beside the CSS logo; other companies fall back safely to their company name until an explicit logo mapping exists.
+
+Product cards are optimized for the portrait kiosk as compact horizontal image/information cards with a full-width `View / add` action. Magento full-text search uses a dedicated GraphQL query shape rather than combining search with an explicit null product filter.
+
+A signed `/api/account/orders` endpoint is also available for the next My Account UI slice. It reads the selected-company order history through `css_company_orders` using the same server-held Magento token and trusted kiosk session; no order/customer token is exposed to the browser.
+
 ## Security boundary
 
 ```text
@@ -91,8 +112,8 @@ NFC credential
   → Magento customer token (server memory only)
   → fresh GraphQL customer/company context
   → opaque HttpOnly css_kiosk_session cookie
-  → trusted catalogue API
-  → Magento GraphQL catalogue
+  → trusted catalogue / basket / checkout APIs
+  → Magento GraphQL
 ```
 
 The RSA private key remains outside the repository on the kiosk application host; Magento receives only the corresponding public key.
