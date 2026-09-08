@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./native-shell.css";
 
 export const metadata: Metadata = {
   title: "CSS Trade Counter Kiosk",
