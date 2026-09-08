@@ -2,6 +2,8 @@
 
 The kiosk catalogue uses a dedicated Magento category branch instead of mirroring the storefront's normal navigation or introducing a second product multiselect attribute.
 
+The category branch is a merchandising/navigation layer, not a second catalogue-permission boundary. Magento/Fluid company visibility remains authoritative. A company-visible product can still appear in `All products` and normal search even when it has not been assigned to any kiosk category.
+
 ## Magento structure
 
 Create one hidden parent category under the store root:
@@ -20,7 +22,8 @@ Recommended rules:
 - keep the `Kiosk Categories` parent out of the normal storefront menu;
 - keep kiosk-facing categories as direct children of that parent;
 - set each child category name, image and position in Magento Admin;
-- assign products to one or more kiosk child categories as required;
+- assign products to one or more kiosk child categories when a category shortcut is useful;
+- do not require every company-visible product to belong to a kiosk category;
 - do not rely on category `product_count` for customer authorization decisions;
 - keep existing Fluid company/role catalogue restrictions in force.
 
@@ -46,14 +49,16 @@ signed browser request
   → categories(parent_category_uid = configured kiosk root)
   → direct child UID/name/image/position set
   → validate requested category UID against that set
-  → products(filter category_uid = selected child)
-     or products(filter category_uid in all kiosk children)
-  → optional full-text search stays inside the same category filter
+  → no category selected:
+       products(...) using normal authenticated company/customer visibility
+  → category selected:
+       products(filter category_uid = selected child)
+  → optional full-text search follows the same rule
   → safe category/product JSON
   → browser
 ```
 
-A browser cannot make the kiosk browse an arbitrary Magento category by posting a different UID. Any requested UID must be one of the current direct children returned beneath the configured kiosk root.
+A browser cannot make the kiosk browse an arbitrary Magento category by posting a different UID. Any requested category UID must be one of the current direct children returned beneath the configured kiosk root. This validation protects the category-navigation surface without hiding otherwise-authorized products from `All products`.
 
 ## Images
 
@@ -65,20 +70,28 @@ The category GraphQL `image` value is normalized server-side:
 
 The browser still validates the final URL as `http`/`https` before using it. Categories without an image get a neutral initial-letter fallback tile.
 
-## Search scope
+## Browse and search scope
 
-The normal Magento full-text `products(search: ...)` query remains in use, but it always receives a real kiosk-category product filter:
+With no kiosk category selected, browse and search use the normal authenticated Magento product query. This means the existing Fluid company/customer catalogue policy decides which products are visible, including products that have not yet been placed into a kiosk category.
+
+When a kiosk category is selected, the product query adds that category filter:
+
+```graphql
+products(
+  filter: { category_uid: { eq: $selectedKioskCategoryUid } }
+)
+```
+
+Search behaves the same way:
 
 ```graphql
 products(
   search: $search
-  filter: { category_uid: { in: $kioskCategoryUids } }
+  filter: { category_uid: { eq: $selectedKioskCategoryUid } }
 )
 ```
 
-When one kiosk category is active, `eq` is used for that selected UID instead.
-
-This prevents the kiosk search box from surfacing otherwise-visible Magento products that have not been merchandised into the kiosk branch.
+When no category is selected, the category filter is omitted entirely. This preserves the full company-visible catalogue while keeping the kiosk category tiles useful as curated shortcuts.
 
 ## Magento / Fluid boundary
 
@@ -86,8 +99,8 @@ No new Magento REST endpoint is required and no new Fluid GraphQL resolver is re
 
 - `categories` with `parent_category_uid` filtering;
 - category `uid`, `name`, `image`, `position` and `product_count`;
-- `products` with `category_uid` filtering;
-- full-text `search` combined with a real product filter.
+- `products` with optional `category_uid` filtering;
+- full-text `search` with or without a selected category filter.
 
 Fluid remains responsible for the existing authenticated company/customer catalogue restrictions and commerce rules.
 
@@ -99,17 +112,19 @@ Before enabling the new kiosk catalogue in an environment:
 2. Create at least three direct child categories.
 3. Add an image to each test child and set their positions.
 4. Assign known test products to the children, including one product assigned to two kiosk categories.
-5. Set `KIOSK_MAGENTO_CATEGORY_ROOT_UID` on the kiosk host.
-6. Restart the kiosk runtime.
-7. Sign in with the accepted test company account.
-8. Confirm only direct kiosk child categories appear and tile order matches Magento position.
-9. Confirm category images render, including the fallback for one deliberately image-less category.
-10. Select each category and verify only its assigned products appear.
-11. Clear the category and confirm the catalogue is the union of all kiosk categories without duplicate product cards.
-12. Search for a product inside the kiosk category set and confirm it appears.
-13. Search for a known Magento product not assigned to any kiosk category and confirm it does not appear.
-14. POST an arbitrary non-kiosk category UID to `/api/catalogue` using a valid signed kiosk request and confirm it fails closed.
-15. Re-run basket, product-option and local-locker checkout smoke tests to confirm downstream commerce remains unchanged.
+5. Keep one known company-visible test product deliberately outside all kiosk categories.
+6. Set `KIOSK_MAGENTO_CATEGORY_ROOT_UID` on the kiosk host.
+7. Restart the kiosk runtime.
+8. Sign in with the accepted test company account.
+9. Confirm only direct kiosk child categories appear and tile order matches Magento position.
+10. Confirm category images render, including the fallback for one deliberately image-less category.
+11. Select each category and verify only its assigned products appear.
+12. Clear the category and confirm the full company-visible catalogue returns.
+13. Confirm the deliberately uncategorized company-visible product appears in `All products`.
+14. Search for that uncategorized product with no category active and confirm it appears.
+15. Select a kiosk category that does not contain that product, repeat the search, and confirm it is correctly excluded by the active category filter.
+16. POST an arbitrary non-kiosk category UID to `/api/catalogue` using a valid signed kiosk request and confirm it fails closed.
+17. Re-run basket, product-option and local-locker checkout smoke tests to confirm downstream commerce remains unchanged.
 
 Static validation:
 
