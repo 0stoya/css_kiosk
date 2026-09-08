@@ -54,8 +54,7 @@ export function CatalogueProductCard({ product, onOpen }: CatalogueProductCardPr
     <article className={styles.card}>
       <div className={styles.image} role="img" aria-label={product.imageLabel || product.name}>
         {showImage ? (
-          // Magento catalogue media is remote and varies by store; native img lets us fail cleanly.
-          // eslint-disable-next-line @next/next/no-img-element
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={imageUrl as string}
             alt=""
