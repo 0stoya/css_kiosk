@@ -31,6 +31,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline-offset: 4px;
 }
 
+button[aria-label^="Open basket"] > b {
+  top: 10px;
+  right: 10px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button[aria-label="My account"]:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
 .kiosk-stage {
   width: min(100vw, 1080px);
   min-height: 100svh;
@@ -42,6 +53,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
     linear-gradient(180deg, #f7fafc 0%, #edf4fa 100%);
   box-shadow: 0 0 80px rgb(0 35 72 / 12%);
   overflow: hidden;
+}
+
+.kiosk-stage-catalogue {
+  grid-template-rows: 1fr;
+  background: #f4f7fa;
 }
 
 .kiosk-brand {
@@ -68,6 +84,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   place-items: center;
   padding: 46px 42px 140px;
 }
+
+.kiosk-main-catalogue {
+  place-items: start center;
+  padding: 18px 24px 40px;
+}
+
 .auth-panel {
   width: min(820px, 100%);
   display: grid;
@@ -270,6 +292,7 @@ h1 {
   .brand-logo { width: min(330px, 78vw); }
   .brand-context { font-size: 15px; }
   .kiosk-main { padding: 24px 18px 150px; }
+  .kiosk-main-catalogue { padding: 12px 12px 28px; }
   .auth-panel { padding: 32px 24px; border-radius: 22px; gap: 22px; }
   h1 { font-size: 40px; }
   .lead { font-size: 20px; }

@@ -363,23 +363,26 @@ export function KioskAuthDemo() {
     : mockCustomer.companyName;
   const displayCompanyReference = verifiedCustomer?.company?.reference || null;
   const companyCount = verifiedCustomer?.companies.length || 0;
+  const catalogueActive = state === "catalogue" && Boolean(verifiedCustomer);
 
   return (
-    <div className="kiosk-stage">
-      <header className="kiosk-brand">
-        <Image
-          className="brand-logo"
-          src="/css-logo.png"
-          alt="Chelmsford Safety Supplies"
-          width={2222}
-          height={514}
-          sizes="420px"
-          priority
-        />
-        <p className="brand-context">Trade counter kiosk</p>
-      </header>
+    <div className={`kiosk-stage${catalogueActive ? " kiosk-stage-catalogue" : ""}`}>
+      {!catalogueActive ? (
+        <header className="kiosk-brand">
+          <Image
+            className="brand-logo"
+            src="/css-logo.png"
+            alt="Chelmsford Safety Supplies"
+            width={2222}
+            height={514}
+            sizes="420px"
+            priority
+          />
+          <p className="brand-context">Trade counter kiosk</p>
+        </header>
+      ) : null}
 
-      <main className="kiosk-main">
+      <main className={`kiosk-main${catalogueActive ? " kiosk-main-catalogue" : ""}`}>
         {waiting ? (
           <section className="auth-panel auth-panel-centred" aria-live="polite">
             <p className="eyebrow">Customer sign in</p>

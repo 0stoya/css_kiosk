@@ -1,0 +1,118 @@
+.section {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--css-border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.header strong {
+  color: var(--css-text);
+  font-family: var(--font-secondary);
+  font-size: 16px;
+}
+
+.header span {
+  color: var(--css-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.message {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--css-muted);
+  font-size: 14px;
+}
+
+.orders {
+  display: grid;
+  gap: 8px;
+}
+
+.order {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border: 1px solid var(--css-border);
+  border-radius: 11px;
+  background: #f8fbfd;
+}
+
+.orderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orderTop > strong {
+  overflow: hidden;
+  color: var(--css-text);
+  font-family: var(--font-secondary);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orderTop > span {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.statusPending {
+  background: #fff4d6;
+  color: #765800;
+}
+
+.statusSuccess {
+  background: #e8f7ef;
+  color: #027a48;
+}
+
+.statusMuted {
+  background: #edf1f4;
+  color: #66788a;
+}
+
+.order time {
+  color: var(--css-muted);
+  font-size: 12px;
+}
+
+.lockerStatus {
+  color: var(--css-primary);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.error {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #f2b8b5;
+  border-radius: 10px;
+  background: #fff8f7;
+  color: var(--css-danger);
+  font-size: 13px;
+}
+
+.error button {
+  min-height: 38px;
+  margin: 0;
+  border: 1px solid #d6a39f;
+  border-radius: 9px;
+  background: white;
+  color: var(--css-danger);
+  font-weight: 900;
+}

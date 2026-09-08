@@ -95,58 +95,83 @@ export class MagentoCatalogueError extends Error {
   }
 }
 
-const CATALOGUE_QUERY = /* GraphQL */ `
-  query KioskCatalogue(
-    $search: String
-    $filter: ProductAttributeFilterInput
+const CATEGORY_SELECTION = /* GraphQL */ `
+  categoryList {
+    children {
+      uid
+      name
+      url_key
+      product_count
+      include_in_menu
+    }
+  }
+`;
+
+const PRODUCT_SELECTION = /* GraphQL */ `
+  total_count
+  page_info {
+    current_page
+    total_pages
+  }
+  items {
+    __typename
+    uid
+    sku
+    name
+    url_key
+    stock_status
+    small_image {
+      url
+      label
+    }
+    price_range {
+      minimum_price {
+        regular_price {
+          value
+          currency
+        }
+        final_price {
+          value
+          currency
+        }
+      }
+    }
+  }
+`;
+
+const BROWSE_CATALOGUE_QUERY = /* GraphQL */ `
+  query KioskCatalogueBrowse(
+    $filter: ProductAttributeFilterInput!
     $pageSize: Int!
     $currentPage: Int!
   ) {
-    categoryList {
-      children {
-        uid
-        name
-        url_key
-        product_count
-        include_in_menu
-      }
-    }
+    ${CATEGORY_SELECTION}
     products(
-      search: $search
       filter: $filter
       pageSize: $pageSize
       currentPage: $currentPage
       sort: { name: ASC }
     ) {
-      total_count
-      page_info {
-        current_page
-        total_pages
-      }
-      items {
-        __typename
-        uid
-        sku
-        name
-        url_key
-        stock_status
-        small_image {
-          url
-          label
-        }
-        price_range {
-          minimum_price {
-            regular_price {
-              value
-              currency
-            }
-            final_price {
-              value
-              currency
-            }
-          }
-        }
-      }
+      ${PRODUCT_SELECTION}
+    }
+  }
+`;
+
+// Keep Magento full-text search separate from browse/category filtering. Some
+// Magento search backends reject the old search + explicit null filter shape.
+const SEARCH_CATALOGUE_QUERY = /* GraphQL */ `
+  query KioskCatalogueSearch(
+    $search: String!
+    $pageSize: Int!
+    $currentPage: Int!
+  ) {
+    ${CATEGORY_SELECTION}
+    products(
+      search: $search
+      pageSize: $pageSize
+      currentPage: $currentPage
+    ) {
+      ${PRODUCT_SELECTION}
     }
   }
 `;
@@ -189,11 +214,16 @@ export async function getAuthenticatedCatalogue(input: {
   const pageSize = Math.max(1, Math.min(24, Math.trunc(input.pageSize || 8)));
   const currentPage = Math.max(1, Math.trunc(input.page || 1));
 
-  const filter = categoryUid
-    ? { category_uid: { eq: categoryUid } }
-    : search
-      ? null
-      : { price: { from: "0" } };
+  const query = search ? SEARCH_CATALOGUE_QUERY : BROWSE_CATALOGUE_QUERY;
+  const variables = search
+    ? { search, pageSize, currentPage }
+    : {
+        filter: categoryUid
+          ? { category_uid: { eq: categoryUid } }
+          : { price: { from: "0" } },
+        pageSize,
+        currentPage,
+      };
 
   let response: Response;
   try {
@@ -204,15 +234,7 @@ export async function getAuthenticatedCatalogue(input: {
         Store: storeCode,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        query: CATALOGUE_QUERY,
-        variables: {
-          search: search || null,
-          filter,
-          pageSize,
-          currentPage,
-        },
-      }),
+      body: JSON.stringify({ query, variables }),
       cache: "no-store",
     });
   } catch {

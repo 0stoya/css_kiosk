@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import type { KioskProductOptions } from "@/lib/magento/product-options";
@@ -12,6 +13,8 @@ import {
   selectedGroupedBasketItems,
   selectedProductOptionUids,
 } from "./product-option-selector";
+import { AccountOrderHistory } from "./account-order-history";
+import { CatalogueProductCard } from "./catalogue-product-card";
 import styles from "./catalogue-home.module.css";
 
 type SignedFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -175,6 +178,24 @@ function BasketIcon() {
   );
 }
 
+function AccountIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+    </svg>
+  );
+}
+
+function customerLogoFor(reference: string | null) {
+  switch (reference?.toUpperCase()) {
+    case "EAL001":
+      return { src: "/greener-ealing-logo.svg", alt: "Greener Ealing" };
+    default:
+      return null;
+  }
+}
+
 function formatMoney(value: number, currency: string) {
   try {
     return new Intl.NumberFormat("en-GB", {
@@ -217,6 +238,8 @@ export function CatalogueHome({
   const [categories, setCategories] = useState<CatalogueCategory[]>([]);
   const [products, setProducts] = useState<CatalogueProduct[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [basket, setBasket] = useState<Basket | null>(null);
@@ -224,6 +247,7 @@ export function CatalogueHome({
   const [basketMutating, setBasketMutating] = useState(false);
   const [basketError, setBasketError] = useState<string | null>(null);
   const [basketOpen, setBasketOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [lockerCheckout, setLockerCheckout] = useState<LockerCheckoutReview | null>(null);
   const [lockerCheckoutLoading, setLockerCheckoutLoading] = useState(false);
   const [lockerCheckoutError, setLockerCheckoutError] = useState<string | null>(null);
@@ -239,13 +263,14 @@ export function CatalogueHome({
 
   const companyName = customer.company?.name || "Personal account";
   const companyReference = customer.company?.reference || null;
+  const customerLogo = customerLogoFor(companyReference);
 
   const handleSessionExpired = useCallback(() => {
     onSessionExpired("Your kiosk session has expired. Tap your card to sign in again.");
   }, [onSessionExpired]);
 
   const loadCatalogue = useCallback(
-    async (input: { search: string; categoryUid: string }) => {
+    async (input: { search: string; categoryUid: string; page: number }) => {
       setLoading(true);
       setError(null);
 
@@ -256,7 +281,7 @@ export function CatalogueHome({
           body: JSON.stringify({
             search: input.search || undefined,
             categoryUid: input.categoryUid || undefined,
-            page: 1,
+            page: input.page,
           }),
         });
 
@@ -275,6 +300,8 @@ export function CatalogueHome({
         setCategories(body.catalogue.categories);
         setProducts(body.catalogue.products);
         setTotalCount(body.catalogue.totalCount);
+        setCurrentPage(Math.max(1, body.catalogue.currentPage));
+        setTotalPages(Math.max(1, body.catalogue.totalPages));
       } catch {
         setError("The trade catalogue could not be loaded right now.");
       } finally {
@@ -321,7 +348,7 @@ export function CatalogueHome({
       await Promise.resolve();
       if (cancelled) return;
       await Promise.all([
-        loadCatalogue({ search: "", categoryUid: "" }),
+        loadCatalogue({ search: "", categoryUid: "", page: 1 }),
         loadBasket(),
       ]);
     }
@@ -490,24 +517,31 @@ export function CatalogueHome({
     event.preventDefault();
     const nextSearch = searchInput.trim();
     setActiveSearch(nextSearch);
-    void loadCatalogue({ search: nextSearch, categoryUid: activeCategoryUid });
+    void loadCatalogue({ search: nextSearch, categoryUid: activeCategoryUid, page: 1 });
   }
 
   function chooseCategory(uid: string) {
     const nextUid = activeCategoryUid === uid ? "" : uid;
     setActiveCategoryUid(nextUid);
-    void loadCatalogue({ search: activeSearch, categoryUid: nextUid });
+    void loadCatalogue({ search: activeSearch, categoryUid: nextUid, page: 1 });
   }
 
   function clearFilters() {
     setSearchInput("");
     setActiveSearch("");
     setActiveCategoryUid("");
-    void loadCatalogue({ search: "", categoryUid: "" });
+    void loadCatalogue({ search: "", categoryUid: "", page: 1 });
+  }
+
+  function goToPage(page: number) {
+    if (loading || page < 1 || page > totalPages || page === currentPage) return;
+    setAccountOpen(false);
+    void loadCatalogue({ search: activeSearch, categoryUid: activeCategoryUid, page });
   }
 
   function openProduct(product: CatalogueProduct) {
     setBasketOpen(false);
+    setAccountOpen(false);
     setLockerCheckout(null);
     setLockerCheckoutError(null);
     setLockerOrderSubmission(null);
@@ -593,6 +627,15 @@ export function CatalogueHome({
     setLockerOrderSubmission(null);
   }
 
+  function openBasket() {
+    closeProduct();
+    setAccountOpen(false);
+    setLockerCheckout(null);
+    setLockerCheckoutError(null);
+    setLockerOrderSubmission(null);
+    setBasketOpen(true);
+  }
+
   const resultLabel = useMemo(() => {
     if (loading) return "Loading trade catalogue…";
     if (activeSearch) return `${totalCount} result${totalCount === 1 ? "" : "s"} for “${activeSearch}”`;
@@ -629,43 +672,73 @@ export function CatalogueHome({
 
   return (
     <section className={styles.catalogueShell} aria-label="Authenticated trade catalogue">
-      <header className={styles.accountBar}>
-        <div>
-          <span className={styles.accountLabel}>Signed in</span>
-          <strong>{companyName}</strong>
-          <span className={styles.accountMeta}>
-            {customer.firstName} {customer.lastName}
-            {companyReference ? ` · ${companyReference}` : ""}
-          </span>
+      <header className={styles.catalogueHeader}>
+        <div className={styles.brandGroup}>
+          <Image
+            className={styles.headerCssLogo}
+            src="/css-logo.png"
+            alt="Chelmsford Safety Supplies"
+            width={2222}
+            height={514}
+            sizes="240px"
+            priority
+          />
+          <span className={styles.brandDivider} aria-hidden="true" />
+          <div className={styles.customerBrand}>
+            {customerLogo ? (
+              <Image
+                className={styles.customerLogo}
+                src={customerLogo.src}
+                alt={customerLogo.alt}
+                width={360}
+                height={120}
+                sizes="180px"
+              />
+            ) : (
+              <span className={styles.customerFallback}>{companyName}</span>
+            )}
+          </div>
         </div>
-        <button className={styles.signOutButton} type="button" onClick={onSignOut}>
-          Sign out
-        </button>
-      </header>
 
-      <div className={styles.heroRow}>
-        <div>
-          <p className={styles.eyebrow}>Trade catalogue</p>
-          <h1>What do you need today?</h1>
-          <p>Live catalogue and pricing for your signed-in CSS account.</p>
+        <div className={styles.headerActions}>
+          <div className={styles.accountMenuWrap}>
+            <button
+              className={styles.iconButton}
+              type="button"
+              onClick={() => setAccountOpen((open) => !open)}
+              aria-expanded={accountOpen}
+              aria-label="My account"
+            >
+              <AccountIcon />
+              <span>My account</span>
+            </button>
+            {accountOpen ? (
+              <div className={styles.accountMenu}>
+                <strong>{companyName}</strong>
+                <span>{customer.firstName} {customer.lastName}</span>
+                <span>{customer.email}</span>
+                {companyReference ? <span>Account {companyReference}</span> : null}
+                <AccountOrderHistory
+                  signedFetch={signedFetch}
+                  onSessionExpired={onSessionExpired}
+                />
+                <button type="button" onClick={onSignOut}>Sign out</button>
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            className={styles.iconButton}
+            type="button"
+            onClick={openBasket}
+            aria-label={`Open basket with ${basketCount} items`}
+          >
+            <BasketIcon />
+            <span>Basket</span>
+            <b>{basketLoading ? "…" : basketCount}</b>
+          </button>
         </div>
-        <button
-          className={styles.basketButton}
-          type="button"
-          onClick={() => {
-            closeProduct();
-            setLockerCheckout(null);
-            setLockerCheckoutError(null);
-            setLockerOrderSubmission(null);
-            setBasketOpen(true);
-          }}
-          aria-label={`Open basket with ${basketCount} items`}
-        >
-          <BasketIcon />
-          <span>Basket</span>
-          <b>{basketLoading ? "…" : basketCount}</b>
-        </button>
-      </div>
+      </header>
 
       <form className={styles.searchForm} onSubmit={submitSearch}>
         <span className={styles.searchIcon}><SearchIcon /></span>
@@ -692,7 +765,6 @@ export function CatalogueHome({
               disabled={loading}
             >
               <span>{category.name}</span>
-              {category.productCount > 0 ? <small>{category.productCount}</small> : null}
             </button>
           ))}
         </div>
@@ -711,7 +783,7 @@ export function CatalogueHome({
           <span>{error}</span>
           <button
             type="button"
-            onClick={() => void loadCatalogue({ search: activeSearch, categoryUid: activeCategoryUid })}
+            onClick={() => void loadCatalogue({ search: activeSearch, categoryUid: activeCategoryUid, page: currentPage })}
           >
             Try again
           </button>
@@ -727,63 +799,34 @@ export function CatalogueHome({
       {!error && !loading && products.length === 0 ? (
         <div className={styles.emptyPanel}>
           <strong>No products found</strong>
-          <span>Try another search or clear the category filter.</span>
+          <span>Try another search or clear the current filters.</span>
           <button type="button" onClick={clearFilters}>Show all products</button>
         </div>
       ) : null}
 
       {!error && !loading && products.length ? (
         <div className={styles.productGrid}>
-          {products.map((product) => {
-            const imageUrl = safeImageUrl(product.imageUrl);
-            const inStock = product.stockStatus === "IN_STOCK";
-            const hasDiscount = Boolean(
-              product.price && product.price.regularValue > product.price.value,
-            );
-
-            return (
-              <article className={styles.productCard} key={product.uid}>
-                <div
-                  className={styles.productImage}
-                  style={imageUrl ? { backgroundImage: `url(${JSON.stringify(imageUrl)})` } : undefined}
-                  role="img"
-                  aria-label={product.imageLabel || product.name}
-                >
-                  {!imageUrl ? <span>{product.name.slice(0, 1).toUpperCase()}</span> : null}
-                </div>
-                <div className={styles.productBody}>
-                  <span className={styles.sku}>{product.sku}</span>
-                  <h2>{product.name}</h2>
-                  <div className={styles.productFooter}>
-                    <div className={styles.priceBlock}>
-                      {product.price ? (
-                        <>
-                          <strong>{formatMoney(product.price.value, product.price.currency)}</strong>
-                          {hasDiscount ? (
-                            <span>{formatMoney(product.price.regularValue, product.price.currency)}</span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <strong>Price on request</strong>
-                      )}
-                    </div>
-                    <span className={inStock ? styles.inStock : styles.outOfStock}>
-                      {inStock ? "In stock" : "Check availability"}
-                    </span>
-                  </div>
-                  <button className={styles.productAction} type="button" onClick={() => openProduct(product)}>
-                    View / add
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+          {products.map((product) => (
+            <CatalogueProductCard
+              key={product.uid}
+              product={product}
+              onOpen={() => openProduct(product)}
+            />
+          ))}
         </div>
       ) : null}
 
-      <p className={styles.securityNote}>
-        Catalogue and basket requests use your short-lived kiosk session. Magento bearer tokens remain server-side and are never exposed to this screen.
-      </p>
+      {!error && !loading && totalPages > 1 ? (
+        <nav className={styles.pagination} aria-label="Catalogue pages">
+          <button type="button" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+            ← Previous
+          </button>
+          <span>Page <strong>{currentPage}</strong> of {totalPages}</span>
+          <button type="button" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>
+            Next →
+          </button>
+        </nav>
+      ) : null}
 
       {selectedProduct ? (
         <div className={styles.modalBackdrop} role="presentation">
