@@ -153,6 +153,21 @@ const PRODUCT_SELECTION = /* GraphQL */ `
 
 const BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueBrowse(
+    $pageSize: Int!
+    $currentPage: Int!
+  ) {
+    products(
+      pageSize: $pageSize
+      currentPage: $currentPage
+      sort: { name: ASC }
+    ) {
+      ${PRODUCT_SELECTION}
+    }
+  }
+`;
+
+const FILTERED_BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
+  query KioskCatalogueCategoryBrowse(
     $filter: ProductAttributeFilterInput!
     $pageSize: Int!
     $currentPage: Int!
@@ -170,6 +185,22 @@ const BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
 
 const SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueSearch(
+    $search: String!
+    $pageSize: Int!
+    $currentPage: Int!
+  ) {
+    products(
+      search: $search
+      pageSize: $pageSize
+      currentPage: $currentPage
+    ) {
+      ${PRODUCT_SELECTION}
+    }
+  }
+`;
+
+const FILTERED_SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
+  query KioskCatalogueCategorySearch(
     $search: String!
     $filter: ProductAttributeFilterInput!
     $pageSize: Int!
@@ -340,27 +371,31 @@ export async function getAuthenticatedCatalogue(input: {
     );
   }
 
-  if (kioskCategoryUids.length === 0) {
-    return {
-      categories,
-      products: [],
-      totalCount: 0,
-      currentPage: 1,
-      totalPages: 1,
-    };
-  }
+  let query: string;
+  let variables: Record<string, unknown>;
 
-  const scopedCategoryUids = categoryUid ? [categoryUid] : kioskCategoryUids;
-  const filter = {
-    category_uid:
-      scopedCategoryUids.length === 1
-        ? { eq: scopedCategoryUids[0] }
-        : { in: scopedCategoryUids },
-  };
-  const query = search ? SEARCH_PRODUCTS_QUERY : BROWSE_PRODUCTS_QUERY;
-  const variables = search
-    ? { search, filter, pageSize, currentPage }
-    : { filter, pageSize, currentPage };
+  if (search && categoryUid) {
+    query = FILTERED_SEARCH_PRODUCTS_QUERY;
+    variables = {
+      search,
+      filter: { category_uid: { eq: categoryUid } },
+      pageSize,
+      currentPage,
+    };
+  } else if (search) {
+    query = SEARCH_PRODUCTS_QUERY;
+    variables = { search, pageSize, currentPage };
+  } else if (categoryUid) {
+    query = FILTERED_BROWSE_PRODUCTS_QUERY;
+    variables = {
+      filter: { category_uid: { eq: categoryUid } },
+      pageSize,
+      currentPage,
+    };
+  } else {
+    query = BROWSE_PRODUCTS_QUERY;
+    variables = { pageSize, currentPage };
+  }
 
   const productData = await requestGraphQl<ProductData>({
     graphqlUrl,
