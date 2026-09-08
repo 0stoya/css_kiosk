@@ -43,7 +43,7 @@ The kiosk can be developed and accepted before physical NFC hardware is availabl
 - opaque, HttpOnly 15-minute kiosk browser session
 - fresh Magento customer/company authorization on every returning-card session
 - authenticated catalogue entry using that same kiosk session
-- server-side kiosk merchandising categories and scoped product search with safe catalogue JSON returned to the browser
+- server-side kiosk merchandising categories with authenticated company-visible product browse/search
 - authenticated basket and local-locker checkout/order confirmation
 - company-gated CSS locker delivery with Payment on Account submission
 - customer-scoped Magento/OGL locker-order correlation
@@ -78,12 +78,13 @@ browser
   → server-held Magento customer token
   → Magento GraphQL categories under the configured kiosk root
   → server validates any selected category against those direct children
-  → Magento GraphQL products scoped to the kiosk-category UID set
+  → Magento GraphQL products using the authenticated company/customer visibility
+  → optional selected kiosk category narrows the product query
   → safe category/product/price/stock data
   → browser
 ```
 
-The browser never receives the Magento bearer token. Product search and category filtering are performed server-side against Magento GraphQL using the authenticated customer token. Search cannot escape the configured kiosk category set, and a browser-supplied category UID is rejected unless it is one of the server-returned kiosk categories.
+The browser never receives the Magento bearer token. Product visibility remains authoritative in Magento/Fluid through the authenticated customer token. Kiosk categories are navigation and merchandising only: a product that the company can see remains available in `All products` and unfiltered search even if it has not been assigned to a kiosk category. A browser-supplied category UID is still rejected unless it is one of the server-returned kiosk categories.
 
 ## Kiosk merchandising categories
 
@@ -104,7 +105,7 @@ Configure the UID of `Kiosk Categories` with:
 KIOSK_MAGENTO_CATEGORY_ROOT_UID=<Magento category UID>
 ```
 
-Each direct child owns its normal Magento category name, image and position. Products may be assigned to one or more of those children. The kiosk reads those child categories with the authenticated customer token, renders their images as touch tiles, and limits browse/search results to products assigned to the returned kiosk-category UIDs.
+Each direct child owns its normal Magento category name, image and position. Products may be assigned to one or more of those children. The kiosk reads those child categories with the authenticated customer token and renders their images as touch tiles. Selecting a tile narrows the catalogue to that category; clearing the tile returns to the full company-visible catalogue, including products not assigned to any kiosk category.
 
 See `docs/KIOSK_CATEGORIES.md` for the Magento setup and acceptance flow.
 
@@ -122,7 +123,7 @@ Pagination
 
 For Greener Ealing (`EAL001`) the existing `public/greener-ealing-logo.svg` is shown beside the CSS logo; other companies fall back safely to their company name until an explicit logo mapping exists.
 
-Product cards are optimized for the portrait kiosk as compact horizontal image/information cards with a full-width `View / add` action. Magento full-text search remains a dedicated query shape, now with a real kiosk-category filter rather than an explicit null product filter.
+Product cards are optimized for the portrait kiosk as compact horizontal image/information cards with a full-width `View / add` action. Magento full-text search remains unfiltered across the authenticated company-visible catalogue unless a kiosk category is actively selected, in which case search stays inside that selected category.
 
 A signed `/api/account/orders` endpoint shows recent selected-company order history through `css_company_orders` using the same server-held Magento token and trusted kiosk session; no order/customer token is exposed to the browser.
 
