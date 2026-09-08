@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CSS Kiosk</string>
+    <string name="offline_title">Kiosk unavailable</string>
+    <string name="offline_detail">Check the network connection and try again.</string>
+    <string name="retry">Try again</string>
+</resources>
