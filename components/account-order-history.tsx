@@ -80,7 +80,11 @@ export function AccountOrderHistory({
   }, [onSessionExpired, signedFetch]);
 
   useEffect(() => {
-    void loadOrders();
+    const timer = window.setTimeout(() => {
+      void loadOrders();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [loadOrders]);
 
   return (
