@@ -1,9 +1,11 @@
-import { getMagentoConfig } from "@/lib/config";
+import { getKioskCatalogueConfig, getMagentoConfig } from "@/lib/config";
 
 export type KioskCatalogueCategory = {
   uid: string;
   name: string;
   urlKey: string | null;
+  imageUrl: string | null;
+  position: number;
   productCount: number;
 };
 
@@ -41,8 +43,9 @@ type CategoryRow = {
   uid?: string | null;
   name?: string | null;
   url_key?: string | null;
+  image?: string | null;
+  position?: number | null;
   product_count?: number | null;
-  include_in_menu?: number | boolean | null;
 };
 
 type ProductRow = {
@@ -70,11 +73,13 @@ type ProductRow = {
   } | null;
 };
 
-type CatalogueData = {
-  categoryList?:
-    | Array<{ children?: CategoryRow[] | null }>
-    | { children?: CategoryRow[] | null }
-    | null;
+type CategoryData = {
+  categories?: {
+    items?: Array<CategoryRow | null> | null;
+  } | null;
+};
+
+type ProductData = {
   products?: {
     total_count?: number | null;
     page_info?: {
@@ -95,14 +100,21 @@ export class MagentoCatalogueError extends Error {
   }
 }
 
-const CATEGORY_SELECTION = /* GraphQL */ `
-  categoryList {
-    children {
-      uid
-      name
-      url_key
-      product_count
-      include_in_menu
+const KIOSK_CATEGORIES_QUERY = /* GraphQL */ `
+  query KioskCatalogueCategories($rootUid: String!) {
+    categories(
+      filters: { parent_category_uid: { eq: $rootUid } }
+      pageSize: 50
+      currentPage: 1
+    ) {
+      items {
+        uid
+        name
+        url_key
+        image
+        position
+        product_count
+      }
     }
   }
 `;
@@ -139,13 +151,12 @@ const PRODUCT_SELECTION = /* GraphQL */ `
   }
 `;
 
-const BROWSE_CATALOGUE_QUERY = /* GraphQL */ `
+const BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueBrowse(
     $filter: ProductAttributeFilterInput!
     $pageSize: Int!
     $currentPage: Int!
   ) {
-    ${CATEGORY_SELECTION}
     products(
       filter: $filter
       pageSize: $pageSize
@@ -157,15 +168,32 @@ const BROWSE_CATALOGUE_QUERY = /* GraphQL */ `
   }
 `;
 
-// Keep Magento full-text search separate from browse/category filtering. Some
-// Magento search backends reject the old search + explicit null filter shape.
-const SEARCH_CATALOGUE_QUERY = /* GraphQL */ `
+const FILTERED_BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
+  query KioskCatalogueCategoryBrowse(
+    $filter: ProductAttributeFilterInput!
+    $pageSize: Int!
+    $currentPage: Int!
+  ) {
+    products(
+      filter: $filter
+      pageSize: $pageSize
+      currentPage: $currentPage
+      sort: { name: ASC }
+    ) {
+      ${PRODUCT_SELECTION}
+    }
+  }
+`;
+
+// Keep Magento full-text search separate from browse/category filtering. The
+// accepted Magento search shape does not need a neutral product filter, while
+// category-scoped search receives a real category_uid filter below.
+const SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueSearch(
     $search: String!
     $pageSize: Int!
     $currentPage: Int!
   ) {
-    ${CATEGORY_SELECTION}
     products(
       search: $search
       pageSize: $pageSize
@@ -176,10 +204,107 @@ const SEARCH_CATALOGUE_QUERY = /* GraphQL */ `
   }
 `;
 
-function categoryRows(categoryList: CatalogueData["categoryList"]): CategoryRow[] {
-  if (!categoryList) return [];
-  const roots = Array.isArray(categoryList) ? categoryList : [categoryList];
-  return roots.flatMap((root) => root.children || []);
+const FILTERED_SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
+  query KioskCatalogueCategorySearch(
+    $search: String!
+    $filter: ProductAttributeFilterInput!
+    $pageSize: Int!
+    $currentPage: Int!
+  ) {
+    products(
+      search: $search
+      filter: $filter
+      pageSize: $pageSize
+      currentPage: $currentPage
+    ) {
+      ${PRODUCT_SELECTION}
+    }
+  }
+`;
+
+async function requestGraphQl<TData>(input: {
+  graphqlUrl: string;
+  storeCode: string;
+  token: string;
+  query: string;
+  variables: Record<string, unknown>;
+}): Promise<TData> {
+  let response: Response;
+  try {
+    response = await fetch(input.graphqlUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.token}`,
+        Store: input.storeCode,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: input.query, variables: input.variables }),
+      cache: "no-store",
+    });
+  } catch {
+    throw new MagentoCatalogueError(
+      "The trade catalogue is unavailable right now.",
+      "UNAVAILABLE",
+    );
+  }
+
+  if (!response.ok) {
+    throw new MagentoCatalogueError(
+      "The trade catalogue is unavailable right now.",
+      "UNAVAILABLE",
+    );
+  }
+
+  let body: GraphQLResponse<TData>;
+  try {
+    body = (await response.json()) as GraphQLResponse<TData>;
+  } catch {
+    throw new MagentoCatalogueError(
+      "The trade catalogue returned an invalid response.",
+      "INVALID_RESPONSE",
+    );
+  }
+
+  if (body.errors?.length) {
+    throw new MagentoCatalogueError(
+      body.errors[0]?.message || "The trade catalogue could not be loaded.",
+      "REJECTED",
+    );
+  }
+
+  if (!body.data) {
+    throw new MagentoCatalogueError(
+      "The trade catalogue returned an invalid response.",
+      "INVALID_RESPONSE",
+    );
+  }
+
+  return body.data;
+}
+
+function categoryImageUrl(baseUrl: string, image: string | null | undefined) {
+  const value = image?.trim();
+  if (!value) return null;
+
+  try {
+    const absolute = new URL(value);
+    if (absolute.protocol === "https:" || absolute.protocol === "http:") {
+      return absolute.toString();
+    }
+  } catch {
+    // Magento commonly returns the category image filename rather than an absolute URL.
+  }
+
+  const relative = value.replace(/^\/+/, "");
+  const path = relative.startsWith("media/")
+    ? `/${relative}`
+    : `/media/catalog/category/${relative}`;
+
+  try {
+    return new URL(path, `${baseUrl}/`).toString();
+  } catch {
+    return null;
+  }
 }
 
 function priceFor(item: ProductRow) {
@@ -208,88 +333,100 @@ export async function getAuthenticatedCatalogue(input: {
   page?: number;
   pageSize?: number;
 }): Promise<KioskCatalogueResult> {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { baseUrl, graphqlUrl, storeCode } = getMagentoConfig();
+  const { categoryRootUid } = getKioskCatalogueConfig();
   const search = input.search?.trim() || "";
   const categoryUid = input.categoryUid?.trim() || "";
   const pageSize = Math.max(1, Math.min(24, Math.trunc(input.pageSize || 8)));
   const currentPage = Math.max(1, Math.trunc(input.page || 1));
 
-  const query = search ? SEARCH_CATALOGUE_QUERY : BROWSE_CATALOGUE_QUERY;
-  const variables = search
-    ? { search, pageSize, currentPage }
-    : {
-        filter: categoryUid
-          ? { category_uid: { eq: categoryUid } }
-          : { price: { from: "0" } },
-        pageSize,
-        currentPage,
-      };
+  const categoryData = await requestGraphQl<CategoryData>({
+    graphqlUrl,
+    storeCode,
+    token: input.token,
+    query: KIOSK_CATEGORIES_QUERY,
+    variables: { rootUid: categoryRootUid },
+  });
 
-  let response: Response;
-  try {
-    response = await fetch(graphqlUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: storeCode,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query, variables }),
-      cache: "no-store",
-    });
-  } catch {
+  const categoryItems = categoryData.categories?.items;
+  if (!Array.isArray(categoryItems)) {
     throw new MagentoCatalogueError(
-      "The trade catalogue is unavailable right now.",
-      "UNAVAILABLE",
-    );
-  }
-
-  if (!response.ok) {
-    throw new MagentoCatalogueError(
-      "The trade catalogue is unavailable right now.",
-      "UNAVAILABLE",
-    );
-  }
-
-  let body: GraphQLResponse<CatalogueData>;
-  try {
-    body = (await response.json()) as GraphQLResponse<CatalogueData>;
-  } catch {
-    throw new MagentoCatalogueError(
-      "The trade catalogue returned an invalid response.",
+      "The kiosk categories returned an invalid response.",
       "INVALID_RESPONSE",
     );
   }
 
-  if (body.errors?.length) {
-    throw new MagentoCatalogueError(
-      body.errors[0]?.message || "The trade catalogue could not be loaded.",
-      "REJECTED",
-    );
-  }
-
-  const productData = body.data?.products;
-  if (!productData || !Array.isArray(productData.items)) {
-    throw new MagentoCatalogueError(
-      "The trade catalogue returned an invalid response.",
-      "INVALID_RESPONSE",
-    );
-  }
-
-  const categories = categoryRows(body.data?.categoryList)
-    .filter((category) => {
-      if (!category.uid || !category.name) return false;
-      if (category.include_in_menu === 0 || category.include_in_menu === false) return false;
-      return true;
-    })
+  const categories = categoryItems
+    .filter((category): category is CategoryRow => Boolean(category?.uid && category?.name))
     .map((category) => ({
       uid: category.uid as string,
       name: category.name as string,
       urlKey: category.url_key || null,
+      imageUrl: categoryImageUrl(baseUrl, category.image),
+      position: typeof category.position === "number" ? category.position : 0,
       productCount: typeof category.product_count === "number" ? category.product_count : 0,
-    }));
+    }))
+    .sort((left, right) => left.position - right.position || left.name.localeCompare(right.name));
 
-  const products = productData.items
+  const kioskCategoryUids = categories.map((category) => category.uid);
+  if (categoryUid && !kioskCategoryUids.includes(categoryUid)) {
+    throw new MagentoCatalogueError(
+      "The selected category is not available on this kiosk.",
+      "REJECTED",
+    );
+  }
+
+  let query: string;
+  let variables: Record<string, unknown>;
+
+  if (search && categoryUid) {
+    query = FILTERED_SEARCH_PRODUCTS_QUERY;
+    variables = {
+      search,
+      filter: { category_uid: { eq: categoryUid } },
+      pageSize,
+      currentPage,
+    };
+  } else if (search) {
+    query = SEARCH_PRODUCTS_QUERY;
+    variables = { search, pageSize, currentPage };
+  } else if (categoryUid) {
+    query = FILTERED_BROWSE_PRODUCTS_QUERY;
+    variables = {
+      filter: { category_uid: { eq: categoryUid } },
+      pageSize,
+      currentPage,
+    };
+  } else {
+    // Magento's products browse resolver expects a real filter even for the
+    // authenticated "all visible products" view. Keep the previously accepted
+    // neutral price filter so Fluid/customer visibility remains authoritative
+    // without requiring kiosk-category membership.
+    query = BROWSE_PRODUCTS_QUERY;
+    variables = {
+      filter: { price: { from: "0" } },
+      pageSize,
+      currentPage,
+    };
+  }
+
+  const productData = await requestGraphQl<ProductData>({
+    graphqlUrl,
+    storeCode,
+    token: input.token,
+    query,
+    variables,
+  });
+
+  const productsResult = productData.products;
+  if (!productsResult || !Array.isArray(productsResult.items)) {
+    throw new MagentoCatalogueError(
+      "The trade catalogue returned an invalid response.",
+      "INVALID_RESPONSE",
+    );
+  }
+
+  const products = productsResult.items
     .filter((item): item is ProductRow => Boolean(item?.uid && item?.sku && item?.name))
     .map((item) => ({
       uid: item.uid as string,
@@ -306,8 +443,11 @@ export async function getAuthenticatedCatalogue(input: {
   return {
     categories,
     products,
-    totalCount: typeof productData.total_count === "number" ? productData.total_count : products.length,
-    currentPage: productData.page_info?.current_page || currentPage,
-    totalPages: productData.page_info?.total_pages || 1,
+    totalCount:
+      typeof productsResult.total_count === "number"
+        ? productsResult.total_count
+        : products.length,
+    currentPage: productsResult.page_info?.current_page || currentPage,
+    totalPages: productsResult.page_info?.total_pages || 1,
   };
 }

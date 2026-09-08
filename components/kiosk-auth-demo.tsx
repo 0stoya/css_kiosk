@@ -354,6 +354,18 @@ export function KioskAuthDemo() {
     setState("catalogue");
   }
 
+  useEffect(() => {
+    if (state !== "welcome" || !verifiedCustomer) return;
+    if (showPrototypeTools && magentoResult !== "real") return;
+
+    const timer = window.setTimeout(() => {
+      setMessage(null);
+      setState("catalogue");
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [magentoResult, showPrototypeTools, state, verifiedCustomer]);
+
   const waiting = state === "idle" || state === "reading";
   const displayFirstName = verifiedCustomer?.firstName || mockCustomer.firstName;
   const displayLastName = verifiedCustomer?.lastName || mockCustomer.lastName;
@@ -478,7 +490,6 @@ export function KioskAuthDemo() {
             <div className="customer-card compact">
               <strong>{displayCompany}</strong>
               <span>{displayEmail}</span>
-              {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
             </div>
             <button className="primary-button" type="button" onClick={continueToCatalogue}>Continue to catalogue</button>
             <button className="secondary-button" type="button" onClick={signOut}>Sign out</button>

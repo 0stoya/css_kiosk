@@ -89,6 +89,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof MagentoCatalogueError) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error(`[catalogue] Magento ${error.code}: ${error.message}`);
+      }
+
       return NextResponse.json(
         {
           ok: false,
@@ -97,6 +101,10 @@ export async function POST(request: Request) {
         },
         { status: error.code === "UNAVAILABLE" ? 503 : 502 },
       );
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[catalogue] Unexpected catalogue failure", error);
     }
 
     return NextResponse.json(

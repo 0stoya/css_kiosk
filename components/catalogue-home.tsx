@@ -23,6 +23,8 @@ type CatalogueCategory = {
   uid: string;
   name: string;
   urlKey: string | null;
+  imageUrl: string | null;
+  position: number;
   productCount: number;
 };
 
@@ -755,18 +757,94 @@ export function CatalogueHome({
       </form>
 
       {categories.length ? (
-        <div className={styles.categoryStrip} aria-label="Product categories">
-          {categories.slice(0, 10).map((category) => (
-            <button
-              key={category.uid}
-              className={activeCategoryUid === category.uid ? styles.categoryActive : styles.categoryButton}
-              type="button"
-              onClick={() => chooseCategory(category.uid)}
-              disabled={loading}
-            >
-              <span>{category.name}</span>
-            </button>
-          ))}
+        <div
+          className={styles.categoryStrip}
+          aria-label="Kiosk product categories"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "10px",
+            overflow: "visible",
+            padding: 0,
+          }}
+        >
+          {categories.map((category) => {
+            const imageUrl = safeImageUrl(category.imageUrl);
+            const active = activeCategoryUid === category.uid;
+
+            return (
+              <button
+                key={category.uid}
+                className={active ? styles.categoryActive : styles.categoryButton}
+                type="button"
+                onClick={() => chooseCategory(category.uid)}
+                disabled={loading}
+                aria-pressed={active}
+                style={{
+                  width: "100%",
+                  minHeight: "160px",
+                  maxWidth: "none",
+                  display: "grid",
+                  gridTemplateRows: "112px auto",
+                  overflow: "hidden",
+                  padding: 0,
+                  textAlign: "left",
+                  boxShadow: active
+                    ? "0 0 0 3px rgb(0 87 168 / 12%)"
+                    : "0 8px 20px rgb(0 35 72 / 7%)",
+                }}
+              >
+                <span
+                  role="img"
+                  aria-label={`${category.name} category`}
+                  style={{
+                    minHeight: "112px",
+                    display: "grid",
+                    placeItems: "center",
+                    backgroundColor: "#f4f7fa",
+                    backgroundImage: imageUrl ? `url(${JSON.stringify(imageUrl)})` : undefined,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                    backgroundSize: "cover",
+                    borderBottom: "1px solid var(--css-border)",
+                  }}
+                >
+                  {!imageUrl ? (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "58px",
+                        height: "58px",
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: "15px",
+                        background: "#e4eff8",
+                        color: "var(--css-primary)",
+                        fontFamily: "var(--font-secondary)",
+                        fontSize: "29px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {category.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  style={{
+                    minHeight: "48px",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "9px 12px",
+                    fontSize: "15px",
+                    fontWeight: 900,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {category.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
