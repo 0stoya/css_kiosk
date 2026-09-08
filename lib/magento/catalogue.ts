@@ -153,10 +153,12 @@ const PRODUCT_SELECTION = /* GraphQL */ `
 
 const BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueBrowse(
+    $filter: ProductAttributeFilterInput!
     $pageSize: Int!
     $currentPage: Int!
   ) {
     products(
+      filter: $filter
       pageSize: $pageSize
       currentPage: $currentPage
       sort: { name: ASC }
@@ -183,6 +185,9 @@ const FILTERED_BROWSE_PRODUCTS_QUERY = /* GraphQL */ `
   }
 `;
 
+// Keep Magento full-text search separate from browse/category filtering. The
+// accepted Magento search shape does not need a neutral product filter, while
+// category-scoped search receives a real category_uid filter below.
 const SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
   query KioskCatalogueSearch(
     $search: String!
@@ -393,8 +398,16 @@ export async function getAuthenticatedCatalogue(input: {
       currentPage,
     };
   } else {
+    // Magento's products browse resolver expects a real filter even for the
+    // authenticated "all visible products" view. Keep the previously accepted
+    // neutral price filter so Fluid/customer visibility remains authoritative
+    // without requiring kiosk-category membership.
     query = BROWSE_PRODUCTS_QUERY;
-    variables = { pageSize, currentPage };
+    variables = {
+      filter: { price: { from: "0" } },
+      pageSize,
+      currentPage,
+    };
   }
 
   const productData = await requestGraphQl<ProductData>({
