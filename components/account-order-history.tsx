@@ -95,6 +95,10 @@ export function AccountOrderHistory({
 
     if (!accountButton || !accountMenuWrap) return;
 
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      accountButton.blur();
+    }
+
     function closeOnOutsidePointer(event: PointerEvent) {
       if (!(event.target instanceof Node) || accountMenuWrap.contains(event.target)) return;
       accountButton.click();
