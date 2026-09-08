@@ -87,6 +87,24 @@ export function AccountOrderHistory({
     return () => window.clearTimeout(timer);
   }, [loadOrders]);
 
+  useEffect(() => {
+    const accountButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="My account"]',
+    );
+    const accountMenuWrap = accountButton?.parentElement;
+
+    if (!accountButton || !accountMenuWrap) return;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!(event.target instanceof Node) || accountMenuWrap.contains(event.target)) return;
+      accountButton.click();
+      accountButton.blur();
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, []);
+
   return (
     <section className={styles.section} aria-label="Recent orders">
       <header className={styles.header}>
