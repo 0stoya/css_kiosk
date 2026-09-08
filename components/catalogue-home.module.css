@@ -92,11 +92,11 @@
   min-height: 62px;
   position: relative;
   display: grid;
-  grid-template-columns: 27px auto;
+  grid-template-columns: 25px auto;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 1px solid #a9bfd1;
   border-radius: 14px;
   background: #f7fbff;
@@ -118,27 +118,32 @@
 }
 
 .iconButton b {
-  min-width: 25px;
-  min-height: 25px;
+  min-width: 24px;
+  min-height: 24px;
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 7px;
+  right: 7px;
   display: grid;
   place-items: center;
   padding: 2px 6px;
+  border: 2px solid white;
   border-radius: 999px;
   background: var(--css-primary);
+  box-shadow: 0 2px 6px rgb(0 35 72 / 18%);
   color: white;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .accountMenu {
-  width: 310px;
+  width: 340px;
+  max-height: min(620px, calc(100svh - 150px));
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
   display: grid;
   gap: 6px;
+  overflow: auto;
   padding: 18px;
   border: 1px solid var(--css-border);
   border-radius: 15px;
@@ -277,46 +282,54 @@
 .loadingGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .productCard {
   min-width: 0;
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr 50px;
   overflow: hidden;
-  border-radius: 16px;
-  box-shadow: 0 9px 24px rgb(0 35 72 / 7%);
+  border-radius: 15px;
+  box-shadow: 0 8px 20px rgb(0 35 72 / 7%);
 }
 
 .productImage {
-  min-height: 180px;
+  min-height: 154px;
+  grid-column: 1;
+  grid-row: 1 / 4;
   display: grid;
   place-items: center;
   background-color: #f4f7fa;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
-  border-bottom: 1px solid var(--css-border);
+  border-right: 1px solid var(--css-border);
+  border-bottom: 0;
 }
 
 .productImage > span {
-  width: 72px;
-  height: 72px;
+  width: 64px;
+  height: 64px;
   display: grid;
   place-items: center;
-  border-radius: 18px;
+  border-radius: 16px;
   background: #e4eff8;
   color: var(--css-primary);
   font-family: var(--font-secondary);
-  font-size: 36px;
+  font-size: 32px;
   font-weight: 900;
 }
 
 .productBody {
-  min-height: 185px;
-  padding: 15px 17px 16px;
-  display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  gap: 8px;
+  display: contents;
+}
+
+.productBody > .sku {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 14px 15px 2px;
 }
 
 .sku {
@@ -327,22 +340,29 @@
 }
 
 .productBody h2 {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 2;
   margin: 0;
+  padding: 3px 15px 5px;
   overflow: hidden;
   color: var(--css-text);
   font-family: var(--font-secondary);
-  font-size: 18px;
-  line-height: 1.22;
+  font-size: 17px;
+  line-height: 1.2;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
 
 .productFooter {
+  grid-column: 2;
+  grid-row: 3;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: end;
-  gap: 9px;
+  gap: 8px;
+  padding: 5px 15px 12px;
 }
 
 .priceBlock {
@@ -353,7 +373,7 @@
 .priceBlock strong {
   color: var(--css-primary);
   font-family: var(--font-secondary);
-  font-size: 21px;
+  font-size: 20px;
 }
 
 .priceBlock span {
@@ -382,10 +402,13 @@
 }
 
 .productAction {
-  min-height: 48px;
-  padding: 8px 14px;
+  min-height: 44px;
+  grid-column: 1 / -1;
+  grid-row: 4;
+  margin: 0 10px 10px;
+  padding: 7px 14px;
   border: 2px solid var(--css-primary);
-  border-radius: 11px;
+  border-radius: 10px;
   background: white;
   color: var(--css-primary);
   font-size: 15px;
@@ -460,9 +483,9 @@
 }
 
 .loadingCard {
-  height: 360px;
+  height: 214px;
   border: 1px solid var(--css-border);
-  border-radius: 16px;
+  border-radius: 15px;
   background: linear-gradient(100deg, #edf2f6 20%, #f8fafc 45%, #edf2f6 70%);
   background-size: 220% 100%;
   animation: shimmer 1.1s linear infinite;
@@ -872,13 +895,22 @@
     white-space: nowrap;
   }
 
+  .iconButton b {
+    top: 4px;
+    right: 4px;
+  }
+
   .accountMenu {
-    width: min(300px, calc(100vw - 28px));
+    width: min(330px, calc(100vw - 28px));
   }
 
   .productGrid,
   .loadingGrid {
     grid-template-columns: 1fr;
+  }
+
+  .productCard {
+    grid-template-columns: 128px minmax(0, 1fr);
   }
 
   .searchForm {
