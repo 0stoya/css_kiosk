@@ -13,6 +13,8 @@ import {
   selectedGroupedBasketItems,
   selectedProductOptionUids,
 } from "./product-option-selector";
+import { AccountOrderHistory } from "./account-order-history";
+import { CatalogueProductCard } from "./catalogue-product-card";
 import styles from "./catalogue-home.module.css";
 
 type SignedFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -716,6 +718,10 @@ export function CatalogueHome({
                 <span>{customer.firstName} {customer.lastName}</span>
                 <span>{customer.email}</span>
                 {companyReference ? <span>Account {companyReference}</span> : null}
+                <AccountOrderHistory
+                  signedFetch={signedFetch}
+                  onSessionExpired={onSessionExpired}
+                />
                 <button type="button" onClick={onSignOut}>Sign out</button>
               </div>
             ) : null}
@@ -800,50 +806,13 @@ export function CatalogueHome({
 
       {!error && !loading && products.length ? (
         <div className={styles.productGrid}>
-          {products.map((product) => {
-            const imageUrl = safeImageUrl(product.imageUrl);
-            const inStock = product.stockStatus === "IN_STOCK";
-            const hasDiscount = Boolean(
-              product.price && product.price.regularValue > product.price.value,
-            );
-
-            return (
-              <article className={styles.productCard} key={product.uid}>
-                <div
-                  className={styles.productImage}
-                  style={imageUrl ? { backgroundImage: `url(${JSON.stringify(imageUrl)})` } : undefined}
-                  role="img"
-                  aria-label={product.imageLabel || product.name}
-                >
-                  {!imageUrl ? <span>{product.name.slice(0, 1).toUpperCase()}</span> : null}
-                </div>
-                <div className={styles.productBody}>
-                  <span className={styles.sku}>{product.sku}</span>
-                  <h2>{product.name}</h2>
-                  <div className={styles.productFooter}>
-                    <div className={styles.priceBlock}>
-                      {product.price ? (
-                        <>
-                          <strong>{formatMoney(product.price.value, product.price.currency)}</strong>
-                          {hasDiscount ? (
-                            <span>{formatMoney(product.price.regularValue, product.price.currency)}</span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <strong>Price on request</strong>
-                      )}
-                    </div>
-                    <span className={inStock ? styles.inStock : styles.outOfStock}>
-                      {inStock ? "In stock" : "Check availability"}
-                    </span>
-                  </div>
-                  <button className={styles.productAction} type="button" onClick={() => openProduct(product)}>
-                    View / add
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+          {products.map((product) => (
+            <CatalogueProductCard
+              key={product.uid}
+              product={product}
+              onOpen={() => openProduct(product)}
+            />
+          ))}
         </div>
       ) : null}
 
