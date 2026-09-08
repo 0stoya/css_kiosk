@@ -95,14 +95,17 @@ export function AccountOrderHistory({
 
     if (!accountButton || !accountMenuWrap) return;
 
+    const button = accountButton;
+    const menuWrap = accountMenuWrap;
+
     if (window.matchMedia("(pointer: coarse)").matches) {
-      accountButton.blur();
+      button.blur();
     }
 
     function closeOnOutsidePointer(event: PointerEvent) {
-      if (!(event.target instanceof Node) || accountMenuWrap.contains(event.target)) return;
-      accountButton.click();
-      accountButton.blur();
+      if (!(event.target instanceof Node) || menuWrap.contains(event.target)) return;
+      button.click();
+      button.blur();
     }
 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
