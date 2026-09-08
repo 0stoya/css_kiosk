@@ -43,6 +43,10 @@ button[aria-label^="Open basket"] > b {
   min-height: 24px;
 }
 
+button[aria-label="My account"] + div > strong + span + span + span {
+  display: none;
+}
+
 @media (hover: none) and (pointer: coarse) {
   button[aria-label="My account"]:focus:not(:focus-visible) {
     outline: none;
