@@ -1,4 +1,4 @@
-function required(name: "MAGENTO_BASE_URL" | "MAGENTO_STORE_CODE") {
+function required(name: string) {
   const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`${name} is not configured.`);
@@ -18,5 +18,11 @@ export function getMagentoConfig() {
     baseUrl,
     storeCode,
     graphqlUrl: process.env.MAGENTO_GRAPHQL_URL?.trim() || `${baseUrl}/graphql`,
+  };
+}
+
+export function getKioskCatalogueConfig() {
+  return {
+    categoryRootUid: required("KIOSK_MAGENTO_CATEGORY_ROOT_UID"),
   };
 }
