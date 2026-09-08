@@ -115,7 +115,6 @@ public final class MainActivity extends Activity {
             Log.w(TAG, "No Android NFC adapter reported by this device");
             return;
         }
-
         Log.i(TAG, "Android NFC adapter present; enabled=" + nfcAdapter.isEnabled());
     }
 
@@ -147,15 +146,15 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        // Deliberately do nothing. The kiosk must not navigate back into browser/history UI.
+        // Deliberately do nothing. The kiosk must not navigate into browser/history UI.
     }
 
     @Override
     protected void onDestroy() {
         if (webView != null) {
-            webView.loadUrl("about:blank");
             webView.stopLoading();
-            webView.setWebViewClient(null);
+            webView.setWebViewClient(new WebViewClient());
+            webView.loadUrl("about:blank");
             webView.destroy();
         }
         super.onDestroy();
@@ -186,7 +185,7 @@ public final class MainActivity extends Activity {
     private void onTagDiscovered(Tag tag) {
         String uid = toHex(tag.getId());
         String[] technologies = tag.getTechList();
-        Log.i(TAG, "NFC tag discovered uid=" + uid + " tech=" + String.join(",", technologies));
+        Log.i(TAG, "NFC tag discovered uid=" + uid + " tech=" + joinTechnologies(technologies));
 
         JSONObject detail = new JSONObject();
         try {
@@ -200,14 +199,14 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        // Diagnostic bridge only for the first hardware slice. Authentication still remains
-        // server-side until native trusted-device enrollment/signing is wired in.
+        // Diagnostic bridge only. Authentication remains server-side until native
+        // trusted-device enrollment/signing is wired in.
         runOnUiThread(() -> {
             String currentUrl = webView.getUrl();
             if (!isAllowedKioskUrl(currentUrl)) return;
             String script =
                 "window.dispatchEvent(new CustomEvent('css-kiosk:nfc-tag',{detail:" +
-                detail +
+                detail.toString() +
                 "}));";
             webView.evaluateJavascript(script, null);
         });
@@ -237,7 +236,7 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isAllowedKioskUrl(String value) {
-        if (value == null || value.isBlank()) return false;
+        if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value);
         return "https".equalsIgnoreCase(uri.getScheme()) &&
             KIOSK_HOST.equalsIgnoreCase(uri.getHost());
@@ -259,6 +258,15 @@ public final class MainActivity extends Activity {
         if (bytes == null || bytes.length == 0) return "";
         StringBuilder value = new StringBuilder(bytes.length * 2);
         for (byte item : bytes) value.append(String.format("%02X", item));
+        return value.toString();
+    }
+
+    private static String joinTechnologies(String[] technologies) {
+        StringBuilder value = new StringBuilder();
+        for (String technology : technologies) {
+            if (value.length() > 0) value.append(',');
+            value.append(technology);
+        }
         return value.toString();
     }
 
