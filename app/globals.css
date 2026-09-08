@@ -31,6 +31,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline-offset: 4px;
 }
 
+button[aria-label^="Open basket"] > b {
+  top: 10px;
+  right: 10px;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button[aria-label="My account"]:focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
 .kiosk-stage {
   width: min(100vw, 1080px);
   min-height: 100svh;
