@@ -37,6 +37,19 @@ button:active:not(:disabled) {
 }
 
 @media (max-width: 760px) {
+  .kiosk-brand {
+    padding-top: max(28px, env(safe-area-inset-top));
+    padding-left: max(22px, env(safe-area-inset-left));
+    padding-right: max(22px, env(safe-area-inset-right));
+  }
+
+  .kiosk-main-catalogue {
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+  }
+
   [aria-label="Authenticated trade catalogue"] {
     width: 100%;
     min-width: 0;
