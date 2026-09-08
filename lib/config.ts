@@ -1,4 +1,9 @@
-function required(name: string) {
+type RequiredConfigKey =
+  | "MAGENTO_BASE_URL"
+  | "MAGENTO_STORE_CODE"
+  | "KIOSK_MAGENTO_CATEGORY_ROOT_UID";
+
+function required(name: RequiredConfigKey) {
   const value = process.env[name]?.trim();
   if (!value) {
     throw new Error(`${name} is not configured.`);
