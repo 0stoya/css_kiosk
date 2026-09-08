@@ -1,0 +1,115 @@
+html,
+body {
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+button {
+  transition: transform 80ms ease, filter 80ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(.985);
+  filter: brightness(.97);
+}
+
+@media (max-width: 760px) {
+  .kiosk-brand {
+    padding-top: max(28px, env(safe-area-inset-top));
+    padding-left: max(22px, env(safe-area-inset-left));
+    padding-right: max(22px, env(safe-area-inset-right));
+  }
+
+  .kiosk-main-catalogue {
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+  }
+
+  [aria-label="Authenticated trade catalogue"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  [aria-label="Authenticated trade catalogue"] > header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  [aria-label="Authenticated trade catalogue"] > header > div:first-child {
+    min-width: 0;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  [aria-label="Authenticated trade catalogue"] > header > div:last-child {
+    width: 100%;
+    min-width: 0;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  [aria-label="Authenticated trade catalogue"] > header > div:last-child > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  button[aria-label="My account"],
+  button[aria-label^="Open basket"] {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  button[aria-label="My account"] {
+    grid-template-columns: 26px auto !important;
+  }
+
+  button[aria-label^="Open basket"] {
+    grid-template-columns: 26px auto 24px !important;
+  }
+
+  button[aria-label="My account"] > span,
+  button[aria-label^="Open basket"] > span {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    clip: auto !important;
+    white-space: normal !important;
+  }
+}
+
+@media (max-width: 520px) {
+  [aria-label="Kiosk product categories"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
