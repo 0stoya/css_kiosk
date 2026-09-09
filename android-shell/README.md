@@ -1,12 +1,10 @@
 # CSS Android kiosk shell
 
-This directory is the first native Android shell for the CSS trade kiosk.
+This directory contains the native Android shell for the CSS trade kiosk.
 
 ## Current scope
 
-The first slice deliberately stays small so it can be validated on the real TouchWo hardware before we commit to any vendor-specific integration.
-
-It currently provides:
+The shell currently provides:
 
 - portrait full-screen/immersive kiosk presentation;
 - a hardened `WebView` that loads only `https://kiosk.csscdn.co.uk/`;
@@ -17,30 +15,57 @@ It currently provides:
 - no normal Android back-navigation escape;
 - keep-screen-awake behaviour;
 - a simple native network/WebView error screen with retry;
-- standard Android `NfcAdapter` reader mode diagnostics;
-- NFC tag UID/technology logging under `CSSKioskShell`;
-- a diagnostic same-origin `css-kiosk:nfc-tag` WebView event;
+- standard Android `NfcAdapter` diagnostics when Android NFC is present;
+- native capture of the TouchWo-installed Sycreader USB HID RFID reader;
+- consumption of Sycreader keyboard-wedge events before they can reach WebView inputs;
+- a same-origin `css-kiosk:rfid-card` event carrying the opaque card identifier into the kiosk UI;
 - a P-256 Android Keystore device key scaffold and stable key-derived device id.
 
-The NFC event is **diagnostic only**. It does not bypass the existing trusted-device/session boundary and it is not yet used to authenticate a customer.
+## TouchWo hardware acceptance
 
-## Intentionally not implemented yet
+The commissioned TouchWo unit reports:
 
-These are the pieces to decide after the TouchWo hardware inspection:
+```text
+Android:          12
+Model/board:      rk3588
+Physical size:    1080x1920
+Physical density: 160
+Override density: 186
+Android NFC:      no system NFC service
+```
 
-- native production device enrollment;
-- native request signing for the kiosk API;
-- wiring real NFC reads into `/api/nfc/resolve`;
+The fitted card reader is visible through Android USB host mode as:
+
+```text
+Manufacturer: Sycreader RFID Technology Co., Ltd
+Product:      SYC ID&IC USB Reader
+USB VID:      0xFFFF
+USB PID:      0x0035
+Interface 0:  USB Standard Keyboard / HID boot keyboard
+Interface 1:  USB Vendor HID
+```
+
+Android exposes the keyboard interface as an input device. A real card scan was confirmed to emit a numeric identifier followed by `KEY_ENTER` at keyboard-wedge speed.
+
+`MainActivity` therefore filters key events by the exact Sycreader VID/PID, buffers only numeric keys, consumes both key-down and key-up events so the value cannot land in a focused email/password/search field, and emits the completed value only after the reader sends Enter. Leading zeroes are preserved and the value is treated as an opaque `uid` credential.
+
+For development testing, the web kiosk listens for `css-kiosk:rfid-card` and feeds the physical card into the existing trusted-device development signer and `/api/nfc/resolve` flow. Production native enrollment/request signing remains a separate step; the physical reader bridge does not weaken the existing server-side device/session validation.
+
+## Remaining K4 work
+
+- native production device enrollment using the Android Keystore public key;
+- native request signing for trusted kiosk API requests;
+- replace the browser development signer in production;
 - Android device-owner / lock-task provisioning;
 - boot receiver / managed auto-launch;
-- TouchWo-specific NFC, USB, serial or GPIO SDK integration if standard Android NFC is not exposed;
+- remote update/recovery strategy;
 - physical locker control.
 
 ## Open in Android Studio
 
 Open the `android-shell` directory as an Android project.
 
-The scaffold currently targets:
+The scaffold targets:
 
 - Java 17;
 - Android SDK 35;
@@ -49,48 +74,44 @@ The scaffold currently targets:
 
 On the first workstation sync, let Android Studio download the required SDK/Gradle components. If it offers a broad AGP upgrade, get the first debug build working before accepting upgrades.
 
-## Tomorrow: hardware acceptance
+## Install and test on the TouchWo
 
-Connect the TouchWo unit over USB and verify:
+With USB or network ADB connected:
 
 ```powershell
 adb devices
-adb shell getprop ro.product.manufacturer
-adb shell getprop ro.product.model
-adb shell getprop ro.build.version.release
-adb shell getprop ro.build.version.sdk
 adb shell wm size
 adb shell wm density
-adb shell pm list features | findstr /i nfc
-adb shell dumpsys nfc
 adb shell dumpsys usb
 ```
 
-Run the debug build from Android Studio, then keep this log open:
+Build/install the debug APK from this directory:
+
+```powershell
+.\gradlew.bat installDebug
+```
+
+Keep the native shell log open while scanning:
 
 ```powershell
 adb logcat -s CSSKioskShell
 ```
 
-Expected startup messages include a Keystore device id and one of:
+A successful physical card read should log only the capture length, not the card value:
 
 ```text
-Android NFC adapter present; enabled=true
+Sycreader RFID card captured length=...
 ```
 
-or:
+The WebView should then move from `Tap your card to sign in` to the existing registered/unregistered card flow. Because the current physical-reader web bridge uses the development trusted-device signer, `kiosk.csscdn.co.uk` must be running the matching development branch for this acceptance test.
 
-```text
-No Android NFC adapter reported by this device
+To inspect raw reader events during hardware diagnostics only:
+
+```powershell
+adb shell getevent -lt /dev/input/event10
 ```
 
-If standard NFC is available, present a real tag/card. We want to see:
-
-```text
-NFC tag discovered uid=... tech=...
-```
-
-That tells us whether K4 can use Android `NfcAdapter` directly or whether the TouchWo unit needs a vendor SDK/peripheral path.
+Do not depend on `/dev/input/event10` in application code; Linux event numbers can change between boots. The app identifies the reader using Android `InputDevice` VID/PID instead.
 
 ## WebView debugging
 
@@ -104,4 +125,4 @@ The shell blocks navigation away from `kiosk.csscdn.co.uk`, so external links do
 
 ## Security note
 
-The Android Keystore private key never leaves the device. Only the public key may be enrolled with the kiosk server. The current shell does not yet enroll or trust that key server-side; that is the next native-device slice after real hardware acceptance.
+The Android Keystore private key never leaves the device. Only the public key may be enrolled with the kiosk server. Native production enrollment/signing is still pending, so this branch deliberately keeps physical RFID authentication behind the existing development trusted-device signer rather than bypassing trust checks.
