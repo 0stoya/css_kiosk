@@ -60,6 +60,16 @@ type ResolveCardResponse = CustomerResponse & {
 
 type DeviceTrustState = "enrolling" | "trusted" | "error";
 
+type NativeRfidDetail = {
+  type?: unknown;
+  value?: unknown;
+  source?: unknown;
+  vendorId?: unknown;
+  productId?: unknown;
+  deviceName?: unknown;
+  capturedAt?: unknown;
+};
+
 export function KioskAuthDemo() {
   const [state, setState] = useState<KioskAuthState>("idle");
   const [cardFixture, setCardFixture] = useState<SimulatedCardFixture>("unregistered");
@@ -75,7 +85,12 @@ export function KioskAuthDemo() {
   const [linkingCard, setLinkingCard] = useState(false);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
+  const stateRef = useRef<KioskAuthState>("idle");
   const showPrototypeTools = process.env.NODE_ENV !== "production";
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const signedFetch = useCallback(async (input: string, init?: RequestInit) => {
     const signer = deviceSignerRef.current;
@@ -84,6 +99,7 @@ export function KioskAuthDemo() {
   }, []);
 
   const clearLocalState = useCallback((nextState: KioskAuthState = "idle") => {
+    stateRef.current = nextState;
     setState(nextState);
     setActiveCredential(null);
     setEmail("");
@@ -117,8 +133,13 @@ export function KioskAuthDemo() {
     simulatorRef.current = simulator;
     deviceSignerRef.current = deviceSigner;
     let cancelled = false;
+    let deviceReady = false;
+    let resolvingCredential = false;
+    let pendingNativeCredential: NfcCredential | null = null;
 
     async function resolveCredential(credential: NfcCredential) {
+      if (resolvingCredential) return;
+      resolvingCredential = true;
       setActiveCredential(credential);
       setState("reading");
       setMessage(null);
@@ -162,8 +183,32 @@ export function KioskAuthDemo() {
       } catch {
         setMessage("Card lookup is unavailable right now. Please try again.");
         setState("error");
+      } finally {
+        resolvingCredential = false;
       }
     }
+
+    function handleNativeRfidCard(event: Event) {
+      if (stateRef.current !== "idle") return;
+
+      const detail = (event as CustomEvent<NativeRfidDetail>).detail;
+      const value = typeof detail?.value === "string" ? detail.value.trim() : "";
+      if (!/^\d{4,64}$/.test(value)) {
+        setMessage("The card reader returned an invalid card value. Please try again.");
+        setState("error");
+        return;
+      }
+
+      const credential: NfcCredential = { type: "uid", value };
+      if (!deviceReady) {
+        pendingNativeCredential = credential;
+        return;
+      }
+
+      void resolveCredential(credential);
+    }
+
+    window.addEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
 
     const removeCredentialHandler = simulator.onCredential((credential) => {
       void resolveCredential(credential);
@@ -181,7 +226,15 @@ export function KioskAuthDemo() {
         if (!statusResponse.ok) throw new Error("Kiosk device trust check failed.");
 
         if (cancelled) return;
+        deviceReady = true;
         setDeviceTrust("trusted");
+
+        const queuedCredential = pendingNativeCredential;
+        pendingNativeCredential = null;
+        if (queuedCredential && stateRef.current === "idle") {
+          void resolveCredential(queuedCredential);
+        }
+
         await simulator.start();
       } catch {
         if (cancelled) return;
@@ -195,6 +248,9 @@ export function KioskAuthDemo() {
 
     return () => {
       cancelled = true;
+      deviceReady = false;
+      pendingNativeCredential = null;
+      window.removeEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
       removeCredentialHandler();
       removeErrorHandler();
       void simulator.stop();
@@ -520,7 +576,7 @@ export function KioskAuthDemo() {
       {showPrototypeTools && state !== "catalogue" ? (
         <aside className="prototype-tools" aria-label="Kiosk simulator controls">
           <strong>Kiosk simulator</strong>
-          <span>Development only · signed device + Android NFC reader simulated</span>
+          <span>Development only · signed device simulator + physical Sycreader bridge</span>
           <span>Device trust: {deviceTrust === "trusted" ? "Trusted" : deviceTrust === "error" ? "Failed" : "Enrolling…"}</span>
 
           <label>
