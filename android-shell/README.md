@@ -19,6 +19,7 @@ The shell currently provides:
 - native capture of the TouchWo-installed Sycreader USB HID RFID reader;
 - consumption of Sycreader keyboard-wedge events before they can reach WebView inputs;
 - a same-origin `css-kiosk:rfid-card` event carrying the opaque card identifier into the kiosk UI;
+- eligibility to act as the Android HOME application so a commissioned TouchWo can boot directly into CSS Kiosk;
 - a P-256 Android Keystore device key scaffold and stable key-derived device id.
 
 ## TouchWo hardware acceptance
@@ -57,7 +58,7 @@ For development testing, the web kiosk listens for `css-kiosk:rfid-card` and fee
 - native request signing for trusted kiosk API requests;
 - replace the browser development signer in production;
 - Android device-owner / lock-task provisioning;
-- boot receiver / managed auto-launch;
+- signed release APK/update process;
 - remote update/recovery strategy;
 - physical locker control.
 
@@ -113,6 +114,40 @@ adb shell getevent -lt /dev/input/event10
 
 Do not depend on `/dev/input/event10` in application code; Linux event numbers can change between boots. The app identifies the reader using Android `InputDevice` VID/PID instead.
 
+## Make CSS Kiosk the permanent Home app
+
+The manifest exposes `MainActivity` as both the normal launcher activity and an Android HOME activity. This deliberately uses the Android Home mechanism rather than a `BOOT_COMPLETED` activity launch: after Android has selected CSS Kiosk as its default Home application, the operating system returns to it naturally during boot.
+
+After installing this build on the TouchWo, set it as Home over ADB:
+
+```powershell
+adb shell cmd package set-home-activity --user 0 uk.co.csscdn.kiosk/.MainActivity
+```
+
+Verify Android resolves HOME to CSS Kiosk:
+
+```powershell
+adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+```
+
+Then perform the real acceptance test:
+
+```powershell
+adb reboot
+```
+
+After Android finishes booting, CSS Kiosk should appear without manually opening the app. Verify the WebView reconnects, the customer card screen is visible and a Sycreader scan is still captured.
+
+If the vendor firmware rejects `set-home-activity`, open Android's Home-app settings and select CSS Kiosk manually:
+
+```powershell
+adb shell am start -a android.settings.HOME_SETTINGS
+```
+
+That same Home-app settings screen is the commissioning recovery route if the stock launcher needs to be restored.
+
+Being the default Home app is not the same as full Android kiosk lockdown. It gives us reliable boot-to-kiosk behaviour, but device-owner/Lock Task provisioning is still required before the unit is considered customer-proof against system navigation/settings access.
+
 ## WebView debugging
 
 Debug builds enable WebView inspection. With the kiosk connected over ADB, desktop Chrome can inspect the native WebView at:
@@ -125,4 +160,4 @@ The shell blocks navigation away from `kiosk.csscdn.co.uk`, so external links do
 
 ## Security note
 
-The Android Keystore private key never leaves the device. Only the public key may be enrolled with the kiosk server. Native production enrollment/signing is still pending, so this branch deliberately keeps physical RFID authentication behind the existing development trusted-device signer rather than bypassing trust checks.
+The Android Keystore private key never leaves the device. Only the public key may be enrolled with the kiosk server. Native production enrollment/signing is still pending, so the current commissioning build deliberately keeps physical RFID authentication behind the existing development trusted-device signer rather than bypassing trust checks.
