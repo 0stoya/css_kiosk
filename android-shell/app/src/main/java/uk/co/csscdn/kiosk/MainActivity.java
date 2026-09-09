@@ -10,6 +10,8 @@ import android.nfc.Tag;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -36,11 +38,22 @@ public final class MainActivity extends Activity {
     private static final String KIOSK_URL = "https://kiosk.csscdn.co.uk/";
     private static final String KIOSK_HOST = "kiosk.csscdn.co.uk";
 
+    // TouchWo commissioning identified the installed reader as:
+    // Sycreader RFID Technology Co., Ltd SYC ID&IC USB Reader
+    // USB VID 0xFFFF / PID 0x0035, exposed as a HID keyboard wedge.
+    private static final int SYCREADER_VENDOR_ID = 0xFFFF;
+    private static final int SYCREADER_PRODUCT_ID = 0x0035;
+    private static final int RFID_MIN_LENGTH = 4;
+    private static final int RFID_MAX_LENGTH = 64;
+    private static final long RFID_MAX_INTER_KEY_GAP_MS = 250L;
+
     private WebView webView;
     private View errorPanel;
     private TextView errorTitle;
     private TextView errorDetail;
     private NfcAdapter nfcAdapter;
+    private final StringBuilder rfidBuffer = new StringBuilder();
+    private long lastRfidKeyAtMs = 0L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,7 +125,7 @@ public final class MainActivity extends Activity {
     private void configureNfc() {
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
         if (nfcAdapter == null) {
-            Log.w(TAG, "No Android NFC adapter reported by this device");
+            Log.w(TAG, "No Android NFC adapter reported by this device; USB HID reader may still be available");
             return;
         }
         Log.i(TAG, "Android NFC adapter present; enabled=" + nfcAdapter.isEnabled());
@@ -127,6 +140,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        clearRfidBuffer();
         if (nfcAdapter != null) {
             try {
                 nfcAdapter.disableReaderMode(this);
@@ -144,6 +158,101 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (handleSycreaderKeyEvent(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    private boolean handleSycreaderKeyEvent(KeyEvent event) {
+        InputDevice device = event.getDevice();
+        if (!isSycreader(device)) return false;
+
+        // Consume every key event from the RFID reader so the keyboard-wedge value
+        // can never land in a focused email/password/search field inside WebView.
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (event.getRepeatCount() != 0) return true;
+
+        long eventTime = event.getEventTime();
+        if (lastRfidKeyAtMs != 0L && eventTime - lastRfidKeyAtMs > RFID_MAX_INTER_KEY_GAP_MS) {
+            clearRfidBuffer();
+        }
+        lastRfidKeyAtMs = eventTime;
+
+        if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER ||
+            event.getKeyCode() == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            finishSycreaderScan(device);
+            return true;
+        }
+
+        Character digit = digitForKeyCode(event.getKeyCode());
+        if (digit == null) {
+            Log.w(TAG, "Ignored unexpected Sycreader key code=" + event.getKeyCode());
+            clearRfidBuffer();
+            return true;
+        }
+
+        if (rfidBuffer.length() >= RFID_MAX_LENGTH) {
+            Log.w(TAG, "Discarded overlong Sycreader scan");
+            clearRfidBuffer();
+            return true;
+        }
+
+        rfidBuffer.append(digit.charValue());
+        return true;
+    }
+
+    private boolean isSycreader(InputDevice device) {
+        if (device == null) return false;
+        if (device.getVendorId() != SYCREADER_VENDOR_ID || device.getProductId() != SYCREADER_PRODUCT_ID) {
+            return false;
+        }
+        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
+    }
+
+    private void finishSycreaderScan(InputDevice device) {
+        String value = rfidBuffer.toString();
+        clearRfidBuffer();
+
+        if (value.length() < RFID_MIN_LENGTH || value.length() > RFID_MAX_LENGTH) {
+            Log.w(TAG, "Discarded Sycreader scan with invalid length=" + value.length());
+            return;
+        }
+
+        Log.i(TAG, "Sycreader RFID card captured length=" + value.length());
+
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("type", "uid");
+            detail.put("value", value);
+            detail.put("capturedAt", System.currentTimeMillis());
+            detail.put("source", "sycreader-usb-hid");
+            detail.put("vendorId", device.getVendorId());
+            detail.put("productId", device.getProductId());
+            detail.put("deviceName", device.getName());
+        } catch (JSONException exception) {
+            Log.w(TAG, "Could not encode Sycreader event", exception);
+            return;
+        }
+
+        dispatchKioskEvent("css-kiosk:rfid-card", detail);
+    }
+
+    private void clearRfidBuffer() {
+        rfidBuffer.setLength(0);
+        lastRfidKeyAtMs = 0L;
+    }
+
+    private static Character digitForKeyCode(int keyCode) {
+        if (keyCode >= KeyEvent.KEYCODE_0 && keyCode <= KeyEvent.KEYCODE_9) {
+            return Character.valueOf((char) ('0' + keyCode - KeyEvent.KEYCODE_0));
+        }
+        if (keyCode >= KeyEvent.KEYCODE_NUMPAD_0 && keyCode <= KeyEvent.KEYCODE_NUMPAD_9) {
+            return Character.valueOf((char) ('0' + keyCode - KeyEvent.KEYCODE_NUMPAD_0));
+        }
+        return null;
+    }
+
+    @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         // Deliberately do nothing. The kiosk must not navigate into browser/history UI.
@@ -151,6 +260,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        clearRfidBuffer();
         if (webView != null) {
             webView.stopLoading();
             webView.setWebViewClient(new WebViewClient());
@@ -201,13 +311,16 @@ public final class MainActivity extends Activity {
 
         // Diagnostic bridge only. Authentication remains server-side until native
         // trusted-device enrollment/signing is wired in.
+        dispatchKioskEvent("css-kiosk:nfc-tag", detail);
+    }
+
+    private void dispatchKioskEvent(String eventName, JSONObject detail) {
         runOnUiThread(() -> {
             String currentUrl = webView.getUrl();
             if (!isAllowedKioskUrl(currentUrl)) return;
             String script =
-                "window.dispatchEvent(new CustomEvent('css-kiosk:nfc-tag',{detail:" +
-                detail.toString() +
-                "}));";
+                "window.dispatchEvent(new CustomEvent(" + JSONObject.quote(eventName) + "," +
+                "{detail:" + detail.toString() + "}));";
             webView.evaluateJavascript(script, null);
         });
     }
