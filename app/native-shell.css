@@ -36,6 +36,18 @@ button:active:not(:disabled) {
   filter: brightness(.97);
 }
 
+/*
+ * Keep development simulator controls available in a normal desktop browser,
+ * but never present them as part of the customer-facing touch kiosk UI.
+ * This is presentation-only: the development device signer and native
+ * Sycreader bridge can continue operating underneath during commissioning.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .prototype-tools {
+    display: none !important;
+  }
+}
+
 @media (max-width: 760px) {
   .kiosk-brand {
     padding-top: max(28px, env(safe-area-inset-top));
