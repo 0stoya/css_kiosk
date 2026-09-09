@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
-  DEVELOPMENT_DEVICE_ID,
   DEVELOPMENT_DEVICE_LABEL,
+  isDevelopmentDeviceId,
 } from "@/lib/kiosk/device-fixture";
 import { registerDevelopmentKioskDevice } from "@/lib/kiosk/device-store";
 
@@ -34,13 +34,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Invalid development device request." }, { status: 400 });
   }
 
-  if (payload.deviceId !== DEVELOPMENT_DEVICE_ID || !isP256PublicJwk(payload.publicJwk)) {
+  if (!isDevelopmentDeviceId(payload.deviceId) || !isP256PublicJwk(payload.publicJwk)) {
     return NextResponse.json({ ok: false, error: "Invalid development device identity." }, { status: 400 });
   }
 
   try {
     const device = registerDevelopmentKioskDevice({
-      deviceId: DEVELOPMENT_DEVICE_ID,
+      deviceId: payload.deviceId,
       label: DEVELOPMENT_DEVICE_LABEL,
       publicJwk: payload.publicJwk,
     });
