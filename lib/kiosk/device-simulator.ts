@@ -1,6 +1,8 @@
 "use client";
 
-import { DEVELOPMENT_DEVICE_ID } from "@/lib/kiosk/device-fixture";
+import { DEVELOPMENT_DEVICE_ID_PREFIX } from "@/lib/kiosk/device-fixture";
+
+const DEVELOPMENT_DEVICE_SESSION_KEY = "css-kiosk-development-device-id";
 
 function bytesToBase64Url(value: ArrayBuffer | Uint8Array) {
   const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -28,6 +30,15 @@ function randomNonce() {
   return bytesToBase64Url(bytes);
 }
 
+function developmentDeviceId() {
+  const existing = window.sessionStorage.getItem(DEVELOPMENT_DEVICE_SESSION_KEY)?.trim();
+  if (existing?.startsWith(`${DEVELOPMENT_DEVICE_ID_PREFIX}-`)) return existing;
+
+  const created = `${DEVELOPMENT_DEVICE_ID_PREFIX}-${randomNonce()}`;
+  window.sessionStorage.setItem(DEVELOPMENT_DEVICE_SESSION_KEY, created);
+  return created;
+}
+
 export interface DevelopmentKioskDeviceSigner {
   readonly deviceId: string;
   enroll(): Promise<void>;
@@ -35,7 +46,7 @@ export interface DevelopmentKioskDeviceSigner {
 }
 
 class BrowserDevelopmentKioskDeviceSigner implements DevelopmentKioskDeviceSigner {
-  readonly deviceId = DEVELOPMENT_DEVICE_ID;
+  readonly deviceId = developmentDeviceId();
   private keyPair: CryptoKeyPair | null = null;
 
   async enroll() {
