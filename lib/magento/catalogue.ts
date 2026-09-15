@@ -1,4 +1,5 @@
 import { getKioskCatalogueConfig, getMagentoConfig } from "@/lib/config";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 export type KioskCatalogueCategory = {
   uid: string;
@@ -224,7 +225,6 @@ const FILTERED_SEARCH_PRODUCTS_QUERY = /* GraphQL */ `
 
 async function requestGraphQl<TData>(input: {
   graphqlUrl: string;
-  storeCode: string;
   token: string;
   query: string;
   variables: Record<string, unknown>;
@@ -234,8 +234,7 @@ async function requestGraphQl<TData>(input: {
     response = await fetch(input.graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: input.storeCode,
+        ...getMagentoCustomerGraphQlHeaders(input.token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ query: input.query, variables: input.variables }),
@@ -333,7 +332,7 @@ export async function getAuthenticatedCatalogue(input: {
   page?: number;
   pageSize?: number;
 }): Promise<KioskCatalogueResult> {
-  const { baseUrl, graphqlUrl, storeCode } = getMagentoConfig();
+  const { baseUrl, graphqlUrl } = getMagentoConfig();
   const { categoryRootUid } = getKioskCatalogueConfig();
   const search = input.search?.trim() || "";
   const categoryUid = input.categoryUid?.trim() || "";
@@ -342,7 +341,6 @@ export async function getAuthenticatedCatalogue(input: {
 
   const categoryData = await requestGraphQl<CategoryData>({
     graphqlUrl,
-    storeCode,
     token: input.token,
     query: KIOSK_CATEGORIES_QUERY,
     variables: { rootUid: categoryRootUid },
@@ -412,7 +410,6 @@ export async function getAuthenticatedCatalogue(input: {
 
   const productData = await requestGraphQl<ProductData>({
     graphqlUrl,
-    storeCode,
     token: input.token,
     query,
     variables,

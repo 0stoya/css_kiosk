@@ -5,7 +5,7 @@ const ASSERTION_TTL_SECONDS = 60;
 const DEFAULT_KEY_ID = "css-kiosk-v1";
 const ISSUER = "css-kiosk";
 const AUDIENCE = "css-commerce";
-const PURPOSE = "customer_session";
+const PURPOSE = "customer_session_bound";
 
 let privateKey: ReturnType<typeof createPrivateKey> | null = null;
 
@@ -32,14 +32,24 @@ function assertionKey() {
 
 export function createMagentoKioskAssertion(input: {
   customerId: number;
+  companyId: number;
   deviceId: string;
+  storeCode: string;
 }) {
   if (!Number.isInteger(input.customerId) || input.customerId <= 0) {
     throw new Error("Invalid Magento customer ID for kiosk assertion.");
   }
 
+  if (!Number.isInteger(input.companyId) || input.companyId <= 0) {
+    throw new Error("Invalid company ID for kiosk assertion.");
+  }
+
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(input.deviceId)) {
     throw new Error("Invalid kiosk device ID for CSS Commerce assertion.");
+  }
+
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(input.storeCode)) {
+    throw new Error("Invalid Magento store code for kiosk assertion.");
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -53,6 +63,8 @@ export function createMagentoKioskAssertion(input: {
     aud: AUDIENCE,
     purpose: PURPOSE,
     sub: String(input.customerId),
+    company_id: input.companyId,
+    store_code: input.storeCode,
     device_id: input.deviceId,
     jti: randomBytes(24).toString("base64url"),
     iat: now,

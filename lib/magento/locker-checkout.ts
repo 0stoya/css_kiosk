@@ -1,6 +1,7 @@
 import { getMagentoConfig } from "@/lib/config";
 import { getKioskLockerConfig } from "@/lib/kiosk/locker-config";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 type GraphQLErrorItem = { message?: string };
 type GraphQLResponse<TData> = { data?: TData; errors?: GraphQLErrorItem[] };
@@ -188,15 +189,14 @@ async function requestMagento<TData>(input: {
   query: string;
   variables?: Record<string, unknown>;
 }): Promise<TData> {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
 
   let response: Response;
   try {
     response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(input.token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

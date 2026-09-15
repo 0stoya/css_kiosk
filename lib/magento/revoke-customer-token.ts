@@ -1,4 +1,5 @@
 import { getMagentoConfig } from "@/lib/config";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 const REVOKE_CUSTOMER_TOKEN_MUTATION = /* GraphQL */ `
   mutation KioskRevokeCustomerToken {
@@ -11,14 +12,13 @@ const REVOKE_CUSTOMER_TOKEN_MUTATION = /* GraphQL */ `
 export async function revokeMagentoCustomerToken(token: string) {
   if (!token) return false;
 
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
 
   try {
     const response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ query: REVOKE_CUSTOMER_TOKEN_MUTATION, variables: {} }),
