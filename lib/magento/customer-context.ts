@@ -1,5 +1,6 @@
 import { getMagentoConfig } from "@/lib/config";
 import { MagentoCustomerAuthError } from "@/lib/magento/customer-auth";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 export type KioskCompanySummary = {
   companyId: number;
@@ -70,15 +71,14 @@ const CUSTOMER_CONTEXT_QUERY = /* GraphQL */ `
 `;
 
 export async function getVerifiedKioskCustomer(token: string): Promise<VerifiedKioskCustomer> {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
 
   let response: Response;
   try {
     response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ query: CUSTOMER_CONTEXT_QUERY, variables: {} }),

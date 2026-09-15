@@ -1,4 +1,5 @@
 import { getMagentoConfig } from "@/lib/config";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 export type KioskLockerOrderStatus = {
   oglOrderNumber: string | null;
@@ -78,14 +79,13 @@ async function getLockerOrderStatus(input: {
   token: string;
   orderNumber: string;
 }): Promise<KioskLockerOrderStatus | null> {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
 
   try {
     const response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(input.token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -124,7 +124,7 @@ export async function getAuthenticatedCompanyOrders(input: {
   page?: number;
   pageSize?: number;
 }) {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
   const currentPage = Math.max(1, Math.trunc(input.page || 1));
   const pageSize = Math.max(1, Math.min(20, Math.trunc(input.pageSize || 5)));
 
@@ -133,8 +133,7 @@ export async function getAuthenticatedCompanyOrders(input: {
     response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(input.token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

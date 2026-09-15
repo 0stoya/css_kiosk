@@ -1,4 +1,5 @@
 import { getMagentoConfig } from "@/lib/config";
+import { getMagentoCustomerGraphQlHeaders } from "@/lib/magento/kiosk-bound-session";
 
 const LOCKER_CARRIER_CODE = "csslocker";
 const LOCKER_METHOD_CODE = "locker";
@@ -156,15 +157,14 @@ async function requestMagento<TData>(input: {
   query: string;
   variables?: Record<string, unknown>;
 }): Promise<TData> {
-  const { graphqlUrl, storeCode } = getMagentoConfig();
+  const { graphqlUrl } = getMagentoConfig();
 
   let response: Response;
   try {
     response = await fetch(graphqlUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${input.token}`,
-        Store: storeCode,
+        ...getMagentoCustomerGraphQlHeaders(input.token),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

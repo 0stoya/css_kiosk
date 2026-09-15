@@ -1,3 +1,4 @@
+import { getMagentoConfig } from "@/lib/config";
 import { createMagentoKioskAssertion } from "@/lib/kiosk/magento-assertion";
 import {
   getKioskSessionId,
@@ -79,11 +80,28 @@ export async function establishAuthenticatedKioskSession(input: {
   let magentoToken = "";
 
   try {
+    const linkedCompany = input.linkedCustomer.company;
+    if (!linkedCompany) {
+      throw new AuthenticatedKioskSessionError(
+        "This card is not linked to an active company account. Please ask a member of staff for help.",
+        "COMPANY_ACCESS_CHANGED",
+        403,
+      );
+    }
+
+    const { storeCode } = getMagentoConfig();
     const assertion = createMagentoKioskAssertion({
       customerId: input.linkedCustomer.customerId,
+      companyId: linkedCompany.companyId,
+      deviceId: input.deviceId,
+      storeCode,
+    });
+    magentoToken = await exchangeMagentoKioskAssertion(assertion, {
+      customerId: input.linkedCustomer.customerId,
+      companyId: linkedCompany.companyId,
+      companyUserId: linkedCompany.companyUserId,
       deviceId: input.deviceId,
     });
-    magentoToken = await exchangeMagentoKioskAssertion(assertion);
 
     const freshCustomer = await getVerifiedKioskCustomer(magentoToken);
     const customer = currentCustomerForLinkedContext(input.linkedCustomer, freshCustomer);

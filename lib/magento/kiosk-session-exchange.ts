@@ -1,4 +1,5 @@
 import { getMagentoConfig } from "@/lib/config";
+import { assertExpectedMagentoBoundKioskSession } from "@/lib/magento/kiosk-bound-session";
 
 export class MagentoKioskSessionError extends Error {
   constructor(message: string, readonly code: "UNAVAILABLE" | "REJECTED" | "INVALID_RESPONSE") {
@@ -20,7 +21,15 @@ type KioskSessionResponse = {
   errors?: Array<{ message?: string }>;
 };
 
-export async function exchangeMagentoKioskAssertion(assertion: string) {
+export async function exchangeMagentoKioskAssertion(
+  assertion: string,
+  expected: {
+    customerId: number;
+    companyId: number;
+    companyUserId: number;
+    deviceId: string;
+  },
+) {
   const { graphqlUrl, storeCode } = getMagentoConfig();
 
   let response: Response;
@@ -68,13 +77,18 @@ export async function exchangeMagentoKioskAssertion(assertion: string) {
     );
   }
 
-  const token = body.data?.css_kiosk_customer_session?.trim() || "";
-  if (token.length < 16) {
+  const credential = body.data?.css_kiosk_customer_session?.trim() || "";
+  try {
+    assertExpectedMagentoBoundKioskSession(credential, {
+      ...expected,
+      storeCode,
+    });
+  } catch {
     throw new MagentoKioskSessionError(
       "Customer session service returned an invalid response.",
       "INVALID_RESPONSE",
     );
   }
 
-  return token;
+  return credential;
 }
