@@ -1,4 +1,4 @@
-import { configuredArgoDatabaseUuid, requestArgo } from "@/lib/argo/client";
+import { ArgoApiError, configuredArgoDatabaseUuid, requestArgo } from "@/lib/argo/client";
 import {
   array,
   dataArray,
@@ -127,4 +127,28 @@ export async function getArgoCart(id: number): Promise<ArgoCart> {
       "get_cart.data.total_quantity",
     ),
   };
+}
+
+
+export async function verifyArgoCartCorrelation(input: {
+  cartId: number;
+  terminalId: number;
+  employeeId: number;
+  badge?: string;
+}): Promise<ArgoCart> {
+  const cart = await getArgoCart(input.cartId);
+
+  if (
+    cart.terminalId !== input.terminalId ||
+    cart.employeeId !== input.employeeId ||
+    (input.badge !== undefined && cart.badge !== input.badge)
+  ) {
+    throw new ArgoApiError(
+      "NEXT ARGO cart no longer matches the expected employee or terminal.",
+      "CORRELATION_MISMATCH",
+      409,
+    );
+  }
+
+  return cart;
 }
