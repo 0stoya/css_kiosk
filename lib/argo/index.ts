@@ -1,6 +1,5 @@
 export { getArgoHealth, describeArgo, listArgoDatabases } from "@/lib/argo/account";
 export { ArgoApiError } from "@/lib/argo/client";
-export { getArgoConfig } from "@/lib/argo/config";
 export {
   createArgoEmployee,
   ensureArgoEmployeeForBadge,
