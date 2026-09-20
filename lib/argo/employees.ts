@@ -12,7 +12,6 @@ import {
 import type { ArgoEmployee, ArgoPage } from "@/lib/argo/types";
 
 type EmployeeListInput = {
-  plantId?: number;
   badge?: string;
   page?: number;
   perPage?: number;
@@ -139,7 +138,7 @@ export async function createArgoEmployee(
     badge: normalizeArgoBadge(input.badge),
     first_name: input.firstName.trim(),
     last_name: input.lastName.trim(),
-    plant_id: input.plantId ?? config.plantId,
+    plant_id: config.plantId,
     department_id: input.departmentId ?? 0,
     employee_group_id: input.employeeGroupId ?? 0,
     job_id: input.jobId ?? 0,
@@ -169,4 +168,15 @@ export async function createArgoEmployee(
   });
 
   return employee(dataRecord(body, "create_employee"), "create_employee.data");
+}
+
+
+export async function ensureArgoEmployeeForBadge(
+  input: Omit<CreateArgoEmployeeInput, "badge"> & { badge: string },
+): Promise<{ employee: ArgoEmployee; created: boolean }> {
+  const existing = await resolveArgoEmployeeByBadge(input.badge);
+  if (existing) return { employee: existing, created: false };
+
+  const created = await createArgoEmployee(input);
+  return { employee: created, created: true };
 }
