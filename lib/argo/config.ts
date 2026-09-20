@@ -1,4 +1,5 @@
 const DEFAULT_ARGO_API_URL = "https://next.lanzigroup.com/customer-api";
+const DEFAULT_ARGO_TIMEOUT_MS = 10_000;
 
 export type ArgoConfig = {
   apiUrl: string;
@@ -7,6 +8,7 @@ export type ArgoConfig = {
   plantId: number;
   terminalType: string;
   terminalSerial: string;
+  timeoutMs: number;
   writesEnabled: boolean;
 };
 
@@ -16,8 +18,7 @@ function required(name: string) {
   return value;
 }
 
-function positiveInteger(name: string) {
-  const value = required(name);
+function positiveIntegerValue(name: string, value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
     throw new Error(`${name} must be a positive integer.`);
   }
@@ -28,6 +29,10 @@ function positiveInteger(name: string) {
   }
 
   return parsed;
+}
+
+function positiveInteger(name: string) {
+  return positiveIntegerValue(name, required(name));
 }
 
 function databaseUuid() {
@@ -49,6 +54,17 @@ function apiUrl() {
   return parsed.toString().replace(/\/$/, "");
 }
 
+function timeoutMs() {
+  const value = process.env.ARGO_TIMEOUT_MS?.trim();
+  if (!value) return DEFAULT_ARGO_TIMEOUT_MS;
+
+  const parsed = positiveIntegerValue("ARGO_TIMEOUT_MS", value);
+  if (parsed > 60_000) {
+    throw new Error("ARGO_TIMEOUT_MS must not exceed 60000.");
+  }
+  return parsed;
+}
+
 export function getArgoConfig(): ArgoConfig {
   return {
     apiUrl: apiUrl(),
@@ -57,6 +73,7 @@ export function getArgoConfig(): ArgoConfig {
     plantId: positiveInteger("ARGO_PLANT_ID"),
     terminalType: required("ARGO_TERMINAL_TYPE"),
     terminalSerial: required("ARGO_TERMINAL_SERIAL"),
+    timeoutMs: timeoutMs(),
     writesEnabled: process.env.ARGO_WRITES_ENABLED?.trim().toLowerCase() === "true",
   };
 }
