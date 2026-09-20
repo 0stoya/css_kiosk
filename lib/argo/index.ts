@@ -9,7 +9,7 @@ export {
   resolveArgoEmployeeByBadge,
 } from "@/lib/argo/employees";
 export { getArgoProduct, listArgoProducts } from "@/lib/argo/products";
-export { getArgoCart, listArgoCarts } from "@/lib/argo/carts";
+export { getArgoCart, listArgoCarts, verifyArgoCartCorrelation } from "@/lib/argo/carts";
 export { getArgoReadiness } from "@/lib/argo/readiness";
 export {
   getArgoTerminal,
