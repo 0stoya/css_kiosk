@@ -525,3 +525,25 @@ Acceptance after deploy:
 - tap the card to establish a fresh bound session;
 - load catalogue/basket/Locker;
 - confirm the Magento log does not emit the Composite reader critical message.
+
+
+### 20 Sep 2026 — Magento 2.4.9 bound-token pre-validator fix
+
+Observed on fresh kiosk sign-in:
+
+```text
+POST /api/nfc/resolve 503 SESSION_UNAVAILABLE
+Magento: Composite reader could not read a token
+```
+
+Root cause confirmed in Magento 2.4.9: `Magento\CustomerGraphQl\Controller\HttpRequestValidator\AuthorizationRequestValidator` validates Bearer tokens before the existing kiosk `TokenUserContext` plugin. The CSS `cssks2_` bound token is not a native Magento token, so Magento rejected it before the kiosk bridge could establish customer context.
+
+Opened Fluid PR #98:
+
+```text
+Fix Magento 2.4.9 kiosk bound-token pre-validation
+```
+
+The fix intercepts the early GraphQL bearer validator for `cssks2_` only, validates the existing CSS binding (token cache, expiry, Store, device, session proof), skips native Magento token parsing when valid, and fails closed when stale/invalid. Ordinary Magento bearer tokens remain unchanged.
+
+Locker admin draft PR #26 should be acceptance-tested only after Fluid #98 is deployed.
