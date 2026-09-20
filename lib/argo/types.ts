@@ -38,7 +38,7 @@ export type ArgoTerminalSlot = {
   plateNumber: number;
   sectorNumber: number;
   cellNumber: number;
-  productId: number;
+  productId: number | null;
 };
 
 export type ArgoTerminalLoadingPlan = {
