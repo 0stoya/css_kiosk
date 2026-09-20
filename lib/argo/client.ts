@@ -2,6 +2,7 @@ import { getArgoConfig } from "@/lib/argo/config";
 
 export type ArgoApiErrorCode =
   | "WRITE_DISABLED"
+  | "CORRELATION_MISMATCH"
   | "INVALID_REQUEST"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
