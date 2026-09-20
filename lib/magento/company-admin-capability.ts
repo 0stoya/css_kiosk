@@ -9,6 +9,10 @@ type CompanyAdminCapabilityData = {
     company_id?: number | null;
     company_user_id?: number | null;
     is_company_admin?: boolean | null;
+    can_manage_users?: boolean | null;
+    can_manage_roles?: boolean | null;
+    can_manage_catalog_visibility?: boolean | null;
+    can_manage_purchase_controls?: boolean | null;
   } | null;
 };
 
@@ -16,6 +20,11 @@ export type KioskCompanyAdminCapability = {
   companyId: number;
   companyUserId: number;
   isCompanyAdmin: boolean;
+  canManageUsers: boolean;
+  canManageRoles: boolean;
+  canManageCatalogVisibility: boolean;
+  canManagePurchaseControls: boolean;
+  canViewLockerStatus: boolean;
 };
 
 export class MagentoCompanyAdminCapabilityError extends Error {
@@ -34,6 +43,10 @@ const COMPANY_ADMIN_CAPABILITY_QUERY = /* GraphQL */ `
       company_id
       company_user_id
       is_company_admin
+      can_manage_users
+      can_manage_roles
+      can_manage_catalog_visibility
+      can_manage_purchase_controls
     }
   }
 `;
@@ -95,7 +108,11 @@ export async function getKioskCompanyAdminCapability(input: {
     !capability ||
     typeof capability.company_id !== "number" ||
     typeof capability.company_user_id !== "number" ||
-    typeof capability.is_company_admin !== "boolean"
+    typeof capability.is_company_admin !== "boolean" ||
+    typeof capability.can_manage_users !== "boolean" ||
+    typeof capability.can_manage_roles !== "boolean" ||
+    typeof capability.can_manage_catalog_visibility !== "boolean" ||
+    typeof capability.can_manage_purchase_controls !== "boolean"
   ) {
     throw new MagentoCompanyAdminCapabilityError(
       "Magento returned an invalid company administration capability.",
@@ -113,9 +130,21 @@ export async function getKioskCompanyAdminCapability(input: {
     );
   }
 
+  const canViewLockerStatus =
+    capability.is_company_admin ||
+    capability.can_manage_users ||
+    capability.can_manage_roles ||
+    capability.can_manage_catalog_visibility ||
+    capability.can_manage_purchase_controls;
+
   return {
     companyId: capability.company_id,
     companyUserId: capability.company_user_id,
     isCompanyAdmin: capability.is_company_admin,
+    canManageUsers: capability.can_manage_users,
+    canManageRoles: capability.can_manage_roles,
+    canManageCatalogVisibility: capability.can_manage_catalog_visibility,
+    canManagePurchaseControls: capability.can_manage_purchase_controls,
+    canViewLockerStatus,
   };
 }
