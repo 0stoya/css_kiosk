@@ -92,7 +92,7 @@ export function LockerAdminPanel({
   onSessionExpired,
 }: LockerAdminPanelProps) {
   const [status, setStatus] = useState<LockerStatus | null>(null);
-  const [capability, setCapability] = useState<LockerAdminResponse["capability"]>(null);
+  const [capability, setCapability] = useState<LockerAdminResponse["capability"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
