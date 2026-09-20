@@ -90,53 +90,50 @@ persist stable cross-system IDs
 
 CSS should not persist the raw badge unless a later provider requirement makes that unavoidable.
 
-## Important identity decision gate
+## Identity decision — kiosk owns Employee context
 
-Before wiring the card directly into the production kiosk login path, we must decide exactly **which CSS identity the RFID authenticates**.
+Decision recorded 20 Sep 2026:
 
-There are two distinct models in the current platform:
+We do **not** need a new Magento/Fluid Employee-session type.
 
-### A. Magento company user/customer
+The kiosk already owns the browser-facing session and keeps Magento credentials server-side. Extend that kiosk session to carry canonical Employee identity separately from the existing Magento commerce actor.
 
-This is what the kiosk authenticates today.
-
-It provides:
-
-- Magento customer token/session;
-- selected company context;
-- catalogue/pricing;
-- cart;
-- checkout / Payment on Account.
-
-### B. Canonical CSS Employee
-
-This is the newer beneficiary identity.
-
-It provides:
-
-- Employee purchase-control subject;
-- line/order attribution;
-- department / cost-centre reporting;
-- employee-specific entitlement;
-- no Magento login identity by design.
-
-These are not currently the same object.
-
-### Decision required
-
-If the kiosk is intended for the **Employee themselves** to tap a card and order for themselves, we need a deliberate server-side bridge from:
+The split is:
 
 ```text
-RFID → CSS Employee
+Kiosk session
+  ├─ commerce actor
+  │    → existing bound Magento customer/company session
+  │    → catalogue / cart / checkout / companycredit
+  │
+  └─ employee
+       → canonical CSS Employee
+       → Employee purchase controls
+       → line/order attribution
+       → ARGO employee link
 ```
 
-to an authorised commerce actor/session.
+Employee remains a beneficiary identity and does not become a Magento login.
 
-Do not solve this by silently turning every Employee into a fake Magento customer/company user unless we explicitly decide to change the Employee model across Fluid/css_admin.
+The kiosk server, not the browser, is responsible for binding the current Employee to Magento cart operations.
 
-If the kiosk remains a company-user purchasing station where a buyer selects a beneficiary Employee, then the current customer-card session can remain and the Employee RFID can be used only for locker collection/provisioning.
+Fluid remains authoritative for Employee existence, company scope, active status and purchase-control enforcement, but no new assertion purpose/session model is required.
 
-This identity decision must be recorded before the production login flow is changed.
+### Minimal Fluid change
+
+The current bound-session GraphQL guard does not allow the existing Employee roots required by the kiosk.
+
+Extend the allow-list only for the specific existing operations required by the kiosk, expected to include:
+
+```text
+css_company_employee
+css_company_employees        only if needed for controlled lookup
+cssAssignCartEmployee
+```
+
+The kiosk should prefer exact Employee IDs from its server-side credential mapping rather than letting browser input browse/select arbitrary Employees.
+
+No new Magento customer token type or Employee authentication resolver is required.
 
 ## Recommended implementation slices
 
@@ -249,23 +246,26 @@ The exact mechanism may change, but the enrolment must be explicit, short-lived 
 
 ### Slice 5 — Employee kiosk authentication
 
-Only after the identity decision gate is resolved:
-
 ```text
 tap RFID
-  → resolve credential hash
-  → active Employee
-  → active company
-  → obtain authorised commerce context
-  → kiosk session contains explicit Employee identity
+  → resolve Employee credential hash
+  → active canonical Employee
+  → resolve configured/authorised commerce actor for that company
+  → establish the existing bound Magento customer/company session
+  → kiosk session stores both commerce actor + Employee identity
 ```
 
-The kiosk session should carry enough server-side context to ensure:
+No Employee ID is accepted from browser input.
 
-- cart lines are assigned to the authenticated Employee where the business model requires it;
-- Employee purchase controls are evaluated;
-- an Employee cannot change to another Employee through browser input;
-- the ARGO employee mapping is available later without exposing the raw badge.
+For every basket mutation, the kiosk server ensures the cart is assigned to the session Employee using the existing Fluid Employee assignment contract.
+
+The kiosk session must ensure:
+
+- cart lines are assigned to the authenticated Employee;
+- Employee purchase controls are evaluated by Fluid;
+- an Employee cannot switch to another Employee through browser input;
+- ARGO employee mapping is available later without exposing the raw badge;
+- a newly authenticated Employee never inherits another Employee's basket.
 
 ### Slice 6 — Locker order/cart correlation
 
@@ -365,8 +365,9 @@ Need provider support/answer for:
 
 ## Immediate next actions
 
-- [ ] Confirm whether the kiosk card should authenticate a canonical Employee or continue authenticating a Magento company user who selects an Employee.
+- [x] Decide identity boundary: kiosk session carries canonical Employee + existing bound Magento commerce actor; no new Magento Employee-session type.
 - [ ] Decide the durable Employee RFID/provider-link storage location and schema.
+- [ ] Add the minimal Fluid bound-session allow-list support for existing Employee query/assignment operations.
 - [ ] Add the Fluid contract/storage for Employee credential + ARGO provider linkage if Employee authentication is selected.
 - [ ] Add css_admin Employee RFID/Locker status and enrolment initiation.
 - [ ] Add trusted kiosk enrolment handshake.
@@ -387,3 +388,5 @@ Need provider support/answer for:
 - Lint/typecheck/build/readiness acceptance reported green.
 - Existing Fluid canonical Employee and Employee purchase-control model confirmed.
 - Important identity split recorded: current kiosk RFID maps to Magento customer; canonical Employee is a separate beneficiary identity.
+- Decision: keep Employee identity in the kiosk server session and reuse the existing bound Magento commerce session; do not add a new Magento Employee-session type.
+- Remaining Fluid work is intentionally minimal: allow the existing Employee query/assignment GraphQL roots for kiosk-bound sessions.
