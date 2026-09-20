@@ -25,12 +25,40 @@ export class ArgoApiError extends Error {
   }
 }
 
+export type ArgoRequestType =
+  | "health"
+  | "describe"
+  | "list_databases"
+  | "list_products"
+  | "get_product"
+  | "list_terminals"
+  | "get_terminal"
+  | "list_plants"
+  | "get_plant"
+  | "list_employees"
+  | "get_employee"
+  | "create_employee"
+  | "list_carts"
+  | "get_cart"
+  | "create_product"
+  | "create_cart"
+  | "upsert_cart_line"
+  | "request_cart_withdrawal"
+  | "get_withdrawal_status";
+
 type ArgoRequestInput = {
-  requestType: string;
+  requestType: ArgoRequestType;
   databaseUuid?: string;
   parameters?: Record<string, unknown>;
-  write?: boolean;
 };
+
+const WRITE_REQUEST_TYPES = new Set<ArgoRequestType>([
+  "create_employee",
+  "create_product",
+  "create_cart",
+  "upsert_cart_line",
+  "request_cart_withdrawal",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -102,7 +130,7 @@ function mappedError(input: {
 export async function requestArgo(input: ArgoRequestInput): Promise<unknown> {
   const config = getArgoConfig();
 
-  if (input.write && !config.writesEnabled) {
+  if (WRITE_REQUEST_TYPES.has(input.requestType) && !config.writesEnabled) {
     throw new ArgoApiError(
       "NEXT ARGO write operations are disabled.",
       "WRITE_DISABLED",
