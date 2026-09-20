@@ -307,6 +307,104 @@ Never select "latest cart for badge" as the authoritative collection.
 
 The exact CSS order → ARGO cart mapping must be known first.
 
+
+## Manager/admin locker operations
+
+New requirement recorded 20 Sep 2026:
+
+When an authenticated manager/company administrator signs into the kiosk, the kiosk should expose a privileged locker view with live ARGO terminal state and controlled physical operations.
+
+### Status view
+
+This can be built from the existing ARGO read contract now:
+
+```text
+get_terminal(configured terminal)
+  → slot_summary
+  → full_slots
+  → empty_slots
+  → loading_plan
+```
+
+The kiosk may show:
+
+- locker online/configured state;
+- terminal identity;
+- total positions;
+- ARGO-reported full/empty/partial/unassigned/unmaterialised counts;
+- full cell identifiers and current product metadata where useful for operations.
+
+Do not relabel `unmaterialised` as "empty" until Lanzi confirms the semantic meaning. The UI should preserve provider terminology or use a neutral "available/unmaterialised" presentation until confirmed.
+
+### Privileged access
+
+Physical locker status may be visible only to an authenticated authorised company user.
+
+The current Magento/Fluid company-user session already carries the management identity. css_kiosk should resolve a server-side locker capability at login and keep only safe booleans in its own kiosk session, for example:
+
+```text
+locker.can_view_status
+locker.can_open
+```
+
+Do not trust a browser-provided role name such as "manager" or "admin".
+
+Company administrators may be granted this automatically. Manager access should be based on an explicit company permission/capability rather than inferred from job title or name.
+
+A dedicated permission is preferable for physical access, for example:
+
+```text
+Css_Commerce::locker_status_view
+Css_Commerce::locker_open
+```
+
+or an equivalent existing company-role resource contract.
+
+### Manual open API gap
+
+The documented NEXT ARGO contract does **not** currently expose an arbitrary compartment/door-open operation.
+
+`request_cart_withdrawal` is not a general manual-open endpoint. It requires:
+
+```text
+terminal_id
+cart_id
+user_badge
+```
+
+and ARGO then performs the cart withdrawal flow with operator confirmation.
+
+Do not misuse a fake/empty cart or a guessed cell to simulate manager door opening.
+
+To support "Open locker" from the manager view, ask Lanzi for the intended privileged/manual operation, including:
+
+- whether it opens by `cell_id`, plate/sector/cell, or another provider identifier;
+- whether only empty/full cells may be opened;
+- required operator/badge identity;
+- confirmation/audit requirements;
+- command response/status;
+- idempotency/retry behaviour.
+
+Until that contract exists, the manager screen can safely provide read-only locker status.
+
+### Server-side open boundary
+
+When a provider manual-open operation exists:
+
+```text
+manager/admin session
+  → signed kiosk request
+  → css_kiosk revalidates locker-open capability
+  → css_kiosk resolves configured terminal
+  → css_kiosk validates provider cell from current ARGO state
+  → provider open request
+  → audit actor + terminal + cell + result
+```
+
+The browser must not be allowed to submit an arbitrary terminal ID or provider database UUID.
+
+A cell identifier may be selected from the safe server-returned current terminal view, but the server must re-fetch/revalidate it before issuing a physical action.
+
 ## Lanzi blockers still open
 
 Do not enable live cart/withdrawal writes until these are confirmed:
@@ -372,6 +470,9 @@ Need provider support/answer for:
 - [ ] Add css_admin Employee RFID/Locker status and enrolment initiation.
 - [ ] Add trusted kiosk enrolment handshake.
 - [ ] Live-test one physical card against both Sycreader and ARGO badge lookup.
+- [ ] Add manager/admin locker status view using the existing read-only ARGO terminal contract.
+- [ ] Define explicit locker view/open company permissions for kiosk sessions.
+- [ ] Ask Lanzi for the supported privileged/manual compartment-open operation; do not emulate it with cart withdrawal.
 - [ ] Enable/test `create_employee` only against agreed test data when appropriate.
 - [ ] Update this tracker with Lanzi's cart/withdrawal reply.
 - [ ] Implement OGL ↔ ARGO cart correlation after the write contract is confirmed.
@@ -389,4 +490,6 @@ Need provider support/answer for:
 - Existing Fluid canonical Employee and Employee purchase-control model confirmed.
 - Important identity split recorded: current kiosk RFID maps to Magento customer; canonical Employee is a separate beneficiary identity.
 - Decision: keep Employee identity in the kiosk server session and reuse the existing bound Magento commerce session; do not add a new Magento Employee-session type.
-- Remaining Fluid work is intentionally minimal: allow the existing Employee query/assignment GraphQL roots for kiosk-bound sessions.
+- Remaining Fluid work for Employee ordering is intentionally minimal: allow the existing Employee assignment GraphQL root for kiosk-bound sessions.
+- New manager/admin requirement recorded: privileged users should see live locker status and, once Lanzi supplies the correct manual-open contract, be able to open a selected locker position.
+- Current ARGO API supports the status view now; it does not document a general manual-open operation.
