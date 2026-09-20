@@ -470,8 +470,8 @@ Need provider support/answer for:
 - [ ] Add css_admin Employee RFID/Locker status and enrolment initiation.
 - [ ] Add trusted kiosk enrolment handshake.
 - [ ] Live-test one physical card against both Sycreader and ARGO badge lookup.
-- [ ] Add manager/admin locker status view using the existing read-only ARGO terminal contract.
-- [ ] Define explicit locker view/open company permissions for kiosk sessions.
+- [x] Add manager/admin locker status view using the existing read-only ARGO terminal contract (draft PR #26; company-admin path first).
+- [ ] Define explicit locker view/open company permissions for manager roles after the company-admin demo path is accepted.
 - [ ] Ask Lanzi for the supported privileged/manual compartment-open operation; do not emulate it with cart withdrawal.
 - [ ] Enable/test `create_employee` only against agreed test data when appropriate.
 - [ ] Update this tracker with Lanzi's cart/withdrawal reply.
@@ -493,3 +493,15 @@ Need provider support/answer for:
 - Remaining Fluid work for Employee ordering is intentionally minimal: allow the existing Employee assignment GraphQL root for kiosk-bound sessions.
 - New manager/admin requirement recorded: privileged users should see live locker status and, once Lanzi supplies the correct manual-open contract, be able to open a selected locker position.
 - Current ARGO API supports the status view now; it does not document a general manual-open operation.
+- Fluid PR #97 opens the existing `css_company_admin` read root to the existing bound kiosk session so css_kiosk can verify company-admin capability server-side.
+- css_kiosk draft PR #26 implements the privileged Locker workspace, live ARGO status, refresh, occupied-cell product enrichment, and the server-side manual-open boundary.
+
+
+### 20 Sep 2026 — locker management demo slice
+
+- Opened Fluid PR #97: allow `css_company_admin` through the existing kiosk-bound GraphQL guard.
+- Opened css_kiosk draft PR #26: company-admin Locker workspace.
+- Company-admin path is server-authorised from the existing bound Magento session; browser role names are not trusted.
+- Live ARGO status is read-only and shows full / confirmed empty / unmaterialised separately.
+- Occupied cell cards enrich product labels from ARGO.
+- Manual Open button/boundary exists but stays disabled until Lanzi supplies the supported privileged cell-open API.
