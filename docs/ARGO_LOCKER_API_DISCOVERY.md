@@ -354,3 +354,42 @@ one RFID
 ```
 
 No direct slot, compartment or door-management API should be required.
+
+
+## Provider foundation implementation checkpoint
+
+PR #24 starts the non-destructive provider foundation while the remaining Lanzi write contracts are pending.
+
+Implemented server-side modules:
+
+```text
+lib/argo/config.ts       strict server configuration + writes-disabled default
+lib/argo/client.ts       single-endpoint POST client, auth, timeout and provider errors
+lib/argo/account.ts      health / describe / database reads
+lib/argo/terminals.ts    terminal list/get + exact configured-terminal resolution
+lib/argo/employees.ts    badge lookup + gated idempotent employee provisioning
+lib/argo/products.ts     product list/get reads
+lib/argo/carts.ts        cart list/get reads + employee/terminal correlation guard
+lib/argo/readiness.ts    combined API/database/terminal readiness check
+```
+
+The known `create_employee` contract is implemented only behind
+`ARGO_WRITES_ENABLED=true`. The default is false. Cart creation, cart-line writes
+and withdrawal writes are intentionally not implemented until Lanzi confirms their
+payload/response and lifecycle semantics.
+
+A development-only readiness probe is available at:
+
+```text
+GET /api/dev/argo/status
+```
+
+It returns 404 in production and returns only safe provider/database/terminal
+metadata; it never returns the API key.
+
+The current kiosk credential store still represents Magento customer linkage, not
+the new CSS employee model. Do not persist `argo_employee_id` into that customer
+credential record as a shortcut. Durable CSS employee ↔ ARGO employee persistence
+should attach to the employee identity once that boundary is available to the
+kiosk. Likewise, OGL ↔ ARGO cart persistence belongs in the order/fulfilment
+correlation layer when cart creation is enabled.
