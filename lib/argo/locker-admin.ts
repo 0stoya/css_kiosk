@@ -1,5 +1,27 @@
 import { getArgoProduct } from "@/lib/argo/products";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
+import type { ArgoProduct } from "@/lib/argo/types";
+
+const PRODUCT_CACHE_TTL_MS = 60_000;
+const productCache = new Map<number, { expiresAt: number; value: ArgoProduct | null }>();
+
+async function cachedArgoProduct(productId: number) {
+  const cached = productCache.get(productId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  let value: ArgoProduct | null = null;
+  try {
+    value = await getArgoProduct(productId);
+  } catch {
+    value = null;
+  }
+
+  productCache.set(productId, {
+    value,
+    expiresAt: Date.now() + PRODUCT_CACHE_TTL_MS,
+  });
+  return value;
+}
 
 export type KioskLockerAdminPosition = {
   cellId: number;
@@ -52,13 +74,7 @@ export async function getKioskLockerAdminStatus(): Promise<KioskLockerAdminStatu
   ];
 
   const productRows = await Promise.all(
-    productIds.map(async (productId) => {
-      try {
-        return [productId, await getArgoProduct(productId)] as const;
-      } catch {
-        return [productId, null] as const;
-      }
-    }),
+    productIds.map(async (productId) => [productId, await cachedArgoProduct(productId)] as const),
   );
   const products = new Map(productRows);
 
