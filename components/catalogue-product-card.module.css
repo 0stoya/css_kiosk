@@ -148,9 +148,6 @@
 @media (max-width: 760px) {
   .card {
     grid-template-columns: 112px minmax(0, 1fr);
-  }
-
-  .card {
     grid-template-rows: 148px 48px;
   }
 
