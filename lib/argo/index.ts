@@ -3,6 +3,7 @@ export { ArgoApiError, requestArgo } from "@/lib/argo/client";
 export { getArgoConfig } from "@/lib/argo/config";
 export {
   createArgoEmployee,
+  ensureArgoEmployeeForBadge,
   getArgoEmployee,
   listArgoEmployees,
   normalizeArgoBadge,
