@@ -4,7 +4,6 @@ import {
   dataArray,
   dataRecord,
   listMeta,
-  nullableBoolean,
   nullableText,
   positiveInteger,
   record,
@@ -61,8 +60,8 @@ function employee(value: unknown, context: string): ArgoEmployee {
     firstName: nullableText(row.first_name, `${context}.first_name`),
     lastName: nullableText(row.last_name, `${context}.last_name`),
     employeeNumber: nullableText(row.employee_number, `${context}.employee_number`),
-    active: nullableBoolean(row.active, `${context}.active`),
-    modifiedAt: nullableText(row.modified_at, `${context}.modified_at`),
+    active: typeof row.active === "boolean" ? row.active : null,
+    modifiedAt: typeof row.modified_at === "string" ? row.modified_at : null,
     raw: row,
   };
 }
