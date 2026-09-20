@@ -25,7 +25,7 @@ export const KIOSK_WELCOME_DELAY_SECONDS = publicSeconds(
 export const KIOSK_INACTIVITY_TIMEOUT_SECONDS = publicSeconds(
   process.env.NEXT_PUBLIC_KIOSK_INACTIVITY_TIMEOUT_SECONDS,
   90,
-  { min: 30, max: 900 },
+  { min: 10, max: 900 },
 );
 
 export const KIOSK_WELCOME_DELAY_MS = KIOSK_WELCOME_DELAY_SECONDS * 1000;
