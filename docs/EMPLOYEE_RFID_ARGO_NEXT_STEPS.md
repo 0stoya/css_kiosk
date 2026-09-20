@@ -596,3 +596,17 @@ Then call `request_cart_withdrawal`, persist only the returned `request_key` for
 Do not infer success/failure state names until Lanzi confirms the status enumeration. For the demo, surface provider status/progress without inventing semantics.
 
 This path can demonstrate "Release loaded cart" now. It cannot support "click any full cell and open it" because the terminal full-slot response does not expose a cart_id/cell→cart mapping.
+
+
+### 20 Sep 2026 — kiosk inactivity lock
+
+Opened css_kiosk PR #29.
+
+Authenticated kiosk UX timing is now configurable:
+
+```text
+NEXT_PUBLIC_KIOSK_WELCOME_DELAY_SECONDS=2
+NEXT_PUBLIC_KIOSK_INACTIVITY_TIMEOUT_SECONDS=90
+```
+
+The welcome screen no longer uses the previous hard-coded five-second delay. While authenticated, real pointer/touch, keyboard and wheel activity resets the inactivity timer. On timeout the kiosk uses the existing secure sign-out path and returns to the card screen. The existing 15-minute server-session TTL remains an independent upper bound.
