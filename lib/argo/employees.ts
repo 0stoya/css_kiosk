@@ -12,6 +12,7 @@ import {
 import type { ArgoEmployee, ArgoPage } from "@/lib/argo/types";
 
 type EmployeeListInput = {
+  plantId?: number;
   badge?: string;
   page?: number;
   perPage?: number;
@@ -24,7 +25,6 @@ export type CreateArgoEmployeeInput = {
   badge: string;
   firstName: string;
   lastName: string;
-  plantId?: number;
   employeeNumber?: string;
   departmentId?: number;
   employeeGroupId?: number;
