@@ -128,20 +128,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const isCompanyAdmin = capability?.isCompanyAdmin === true;
+  const canViewStatus = capability?.canViewLockerStatus === true;
 
   if (payload.action === "capability") {
     return NextResponse.json({
       ok: true,
       capability: {
-        canViewStatus: isCompanyAdmin,
+        canViewStatus,
         canOpen: false,
         manualOpenAvailable: false,
       },
     });
   }
 
-  if (!isCompanyAdmin) {
+  if (!canViewStatus) {
     return NextResponse.json(
       {
         ok: false,
