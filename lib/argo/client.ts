@@ -128,6 +128,14 @@ function mappedError(input: {
 }
 
 export async function requestArgo(input: ArgoRequestInput): Promise<unknown> {
+  if (typeof window !== "undefined") {
+    throw new ArgoApiError(
+      "NEXT ARGO may only be called from the kiosk server.",
+      "UNAVAILABLE",
+      503,
+    );
+  }
+
   const config = getArgoConfig();
 
   if (WRITE_REQUEST_TYPES.has(input.requestType) && !config.writesEnabled) {
