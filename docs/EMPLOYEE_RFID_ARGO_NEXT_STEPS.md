@@ -547,3 +547,20 @@ Fix Magento 2.4.9 kiosk bound-token pre-validation
 The fix intercepts the early GraphQL bearer validator for `cssks2_` only, validates the existing CSS binding (token cache, expiry, Store, device, session proof), skips native Magento token parsing when valid, and fails closed when stale/invalid. Ordinary Magento bearer tokens remain unchanged.
 
 Locker admin draft PR #26 should be acceptance-tested only after Fluid #98 is deployed.
+
+
+### 20 Sep 2026 — manager/admin locker visibility correction
+
+Live acceptance showed that a company role named `Admin` with broad management permissions does not necessarily set Fluid's special `is_company_admin` flag.
+
+Opened css_kiosk PR #27 to broaden **read-only locker status** visibility using existing current-user management capabilities returned by `css_company_admin`:
+
+```text
+is_company_admin
+OR can_manage_users
+OR can_manage_roles
+OR can_manage_catalog_visibility
+OR can_manage_purchase_controls
+```
+
+The decision remains server-side and company/user IDs are cross-checked against the active bound session. Physical locker opening remains disabled pending the Lanzi manual-open contract and should later use its own explicit permission.
