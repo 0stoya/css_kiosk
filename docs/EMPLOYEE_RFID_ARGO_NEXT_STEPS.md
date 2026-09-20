@@ -564,3 +564,35 @@ OR can_manage_purchase_controls
 ```
 
 The decision remains server-side and company/user IDs are cross-checked against the active bound session. Physical locker opening remains disabled pending the Lanzi manual-open contract and should later use its own explicit permission.
+
+
+### 20 Sep 2026 — request_cart_withdrawal demo path
+
+Lanzi's documented `request_cart_withdrawal` contract is sufficient to prove a real physical hand-over for a **known loaded cart**:
+
+```text
+terminal_id
+cart_id
+user_badge
+→ request_key
+→ get_withdrawal_status(request_key)
+```
+
+This is cart-centric, not a general cell/door-open operation. Keep the existing arbitrary-cell Open action disabled until Lanzi confirms a privileged manual-open API.
+
+For a safe demo, use a known test cart that Lanzi/operations confirms is currently loaded on terminal 42042. Require the operator to present their RFID again at release time so the raw badge is used transiently and never persisted. Send `user_badge` as a string to preserve leading zeroes.
+
+The kiosk should revalidate:
+
+- trusted kiosk device;
+- active kiosk session;
+- manager/admin locker capability;
+- configured terminal identity;
+- exact cart exists and belongs to the configured terminal;
+- presented badge resolves to the same signed-in operator/customer where applicable.
+
+Then call `request_cart_withdrawal`, persist only the returned `request_key` for the short-lived operation, and poll `get_withdrawal_status`.
+
+Do not infer success/failure state names until Lanzi confirms the status enumeration. For the demo, surface provider status/progress without inventing semantics.
+
+This path can demonstrate "Release loaded cart" now. It cannot support "click any full cell and open it" because the terminal full-slot response does not expose a cart_id/cell→cart mapping.
