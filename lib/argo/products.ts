@@ -3,7 +3,6 @@ import {
   dataArray,
   dataRecord,
   listMeta,
-  nullableBoolean,
   nullableText,
   positiveInteger,
   record,
@@ -26,8 +25,8 @@ function product(value: unknown, context: string): ArgoProduct {
     customerCode: nullableText(row.customer_code, `${context}.customer_code`),
     description: nullableText(row.description, `${context}.description`),
     unit: nullableText(row.unit, `${context}.unit`),
-    active: nullableBoolean(row.active, `${context}.active`),
-    modifiedAt: nullableText(row.modified_at, `${context}.modified_at`),
+    active: typeof row.active === "boolean" ? row.active : null,
+    modifiedAt: typeof row.modified_at === "string" ? row.modified_at : null,
     raw: row,
   };
 }
