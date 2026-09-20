@@ -166,7 +166,9 @@ export async function createArgoEmployee(
     parameters,
   });
 
-  return employee(dataRecord(body, "create_employee"), "create_employee.data");
+  const created = dataRecord(body, "create_employee");
+  const id = positiveInteger(created.id, "create_employee.data.id");
+  return getArgoEmployee(id);
 }
 
 
