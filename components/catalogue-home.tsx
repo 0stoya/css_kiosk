@@ -15,6 +15,7 @@ import {
 } from "./product-option-selector";
 import { AccountOrderHistory } from "./account-order-history";
 import { CatalogueProductCard } from "./catalogue-product-card";
+import { LockerAdminPanel } from "./locker-admin-panel";
 import styles from "./catalogue-home.module.css";
 
 type SignedFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -147,6 +148,17 @@ type LockerCheckoutResponse = {
   submission?: LockerOrderSubmission;
 };
 
+type LockerAdminCapabilityResponse = {
+  ok?: boolean;
+  code?: string;
+  error?: string;
+  capability?: {
+    canViewStatus: boolean;
+    canOpen: boolean;
+    manualOpenAvailable: boolean;
+  };
+};
+
 type BasketAction =
   | { action: "get" }
   | { action: "add"; sku: string; quantity: number; selectedOptions?: string[] }
@@ -185,6 +197,17 @@ function AccountIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <circle cx="12" cy="8" r="4" />
       <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+    </svg>
+  );
+}
+
+function LockerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="5" y="2.5" width="14" height="19" rx="2" />
+      <path d="M5 10h14" />
+      <path d="M15.5 6.25h.01" />
+      <path d="M15.5 15.5h.01" />
     </svg>
   );
 }
@@ -250,6 +273,8 @@ export function CatalogueHome({
   const [basketError, setBasketError] = useState<string | null>(null);
   const [basketOpen, setBasketOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [lockerAdminOpen, setLockerAdminOpen] = useState(false);
+  const [lockerAdminAvailable, setLockerAdminAvailable] = useState(false);
   const [lockerCheckout, setLockerCheckout] = useState<LockerCheckoutReview | null>(null);
   const [lockerCheckoutLoading, setLockerCheckoutLoading] = useState(false);
   const [lockerCheckoutError, setLockerCheckoutError] = useState<string | null>(null);
@@ -343,6 +368,29 @@ export function CatalogueHome({
     }
   }, [handleSessionExpired, signedFetch]);
 
+
+  const loadLockerAdminCapability = useCallback(async () => {
+    try {
+      const response = await signedFetch("/api/locker/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "capability" }),
+      });
+      const body = (await response.json()) as LockerAdminCapabilityResponse;
+
+      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
+        handleSessionExpired();
+        return;
+      }
+
+      setLockerAdminAvailable(
+        Boolean(response.ok && body.ok && body.capability?.canViewStatus),
+      );
+    } catch {
+      setLockerAdminAvailable(false);
+    }
+  }, [handleSessionExpired, signedFetch]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -352,6 +400,7 @@ export function CatalogueHome({
       await Promise.all([
         loadCatalogue({ search: "", categoryUid: "", page: 1 }),
         loadBasket(),
+        loadLockerAdminCapability(),
       ]);
     }
 
@@ -360,7 +409,7 @@ export function CatalogueHome({
     return () => {
       cancelled = true;
     };
-  }, [loadBasket, loadCatalogue]);
+  }, [loadBasket, loadCatalogue, loadLockerAdminCapability]);
 
   async function performBasketAction(action: BasketAction) {
     setBasketMutating(true);
@@ -638,6 +687,14 @@ export function CatalogueHome({
     setBasketOpen(true);
   }
 
+
+  function openLockerAdmin() {
+    closeProduct();
+    setBasketOpen(false);
+    setAccountOpen(false);
+    setLockerAdminOpen(true);
+  }
+
   const resultLabel = useMemo(() => {
     if (loading) return "Loading trade catalogue…";
     if (activeSearch) return `${totalCount} result${totalCount === 1 ? "" : "s"} for “${activeSearch}”`;
@@ -703,6 +760,18 @@ export function CatalogueHome({
         </div>
 
         <div className={styles.headerActions}>
+          {lockerAdminAvailable ? (
+            <button
+              className={styles.iconButton}
+              type="button"
+              onClick={openLockerAdmin}
+              aria-label="Open locker management"
+            >
+              <LockerIcon />
+              <span>Locker</span>
+            </button>
+          ) : null}
+
           <div className={styles.accountMenuWrap}>
             <button
               className={styles.iconButton}
@@ -1005,6 +1074,14 @@ export function CatalogueHome({
             </div>
           </section>
         </div>
+      ) : null}
+
+      {lockerAdminOpen ? (
+        <LockerAdminPanel
+          signedFetch={signedFetch}
+          onClose={() => setLockerAdminOpen(false)}
+          onSessionExpired={onSessionExpired}
+        />
       ) : null}
 
       {basketOpen ? (
