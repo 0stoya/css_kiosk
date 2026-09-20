@@ -5,6 +5,11 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CatalogueHome } from "@/components/catalogue-home";
 import { KioskAuthState, mockCustomer } from "@/lib/kiosk/auth-state";
 import {
+  KIOSK_INACTIVITY_TIMEOUT_MS,
+  KIOSK_INACTIVITY_TIMEOUT_SECONDS,
+  KIOSK_WELCOME_DELAY_MS,
+} from "@/lib/kiosk/timing";
+import {
   createDevelopmentKioskDeviceSigner,
   type DevelopmentKioskDeviceSigner,
 } from "@/lib/kiosk/device-simulator";
@@ -417,10 +422,70 @@ export function KioskAuthDemo() {
     const timer = window.setTimeout(() => {
       setMessage(null);
       setState("catalogue");
-    }, 5000);
+    }, KIOSK_WELCOME_DELAY_MS);
 
     return () => window.clearTimeout(timer);
   }, [magentoResult, showPrototypeTools, state, verifiedCustomer]);
+
+  useEffect(() => {
+    if ((state !== "welcome" && state !== "catalogue") || !verifiedCustomer) {
+      return;
+    }
+
+    let inactivityTimer: number | null = null;
+    let lastActivityAt = Date.now();
+
+    function clearInactivityTimer() {
+      if (inactivityTimer !== null) {
+        window.clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+      }
+    }
+
+    function scheduleInactivityCheck() {
+      clearInactivityTimer();
+      const elapsed = Date.now() - lastActivityAt;
+      const remaining = Math.max(1, KIOSK_INACTIVITY_TIMEOUT_MS - elapsed);
+      inactivityTimer = window.setTimeout(checkInactivity, remaining);
+    }
+
+    function checkInactivity() {
+      if (Date.now() - lastActivityAt >= KIOSK_INACTIVITY_TIMEOUT_MS) {
+        signOut();
+        return;
+      }
+
+      scheduleInactivityCheck();
+    }
+
+    function markActivity() {
+      lastActivityAt = Date.now();
+      scheduleInactivityCheck();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        checkInactivity();
+      }
+    }
+
+    window.addEventListener("pointerdown", markActivity, { passive: true });
+    window.addEventListener("keydown", markActivity);
+    window.addEventListener("touchstart", markActivity, { passive: true });
+    window.addEventListener("wheel", markActivity, { passive: true });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    scheduleInactivityCheck();
+
+    return () => {
+      clearInactivityTimer();
+      window.removeEventListener("pointerdown", markActivity);
+      window.removeEventListener("keydown", markActivity);
+      window.removeEventListener("touchstart", markActivity);
+      window.removeEventListener("wheel", markActivity);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [signOut, state, verifiedCustomer]);
 
   const waiting = state === "idle" || state === "reading";
   const displayFirstName = verifiedCustomer?.firstName || mockCustomer.firstName;
@@ -462,7 +527,9 @@ export function KioskAuthDemo() {
               <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
             </div>
 
-            <p className="privacy-note">The kiosk automatically signs out after inactivity.</p>
+            <p className="privacy-note">
+              The kiosk automatically signs out after {KIOSK_INACTIVITY_TIMEOUT_SECONDS} seconds of inactivity.
+            </p>
           </section>
         ) : null}
 
