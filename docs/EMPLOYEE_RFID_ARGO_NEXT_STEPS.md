@@ -505,3 +505,23 @@ Need provider support/answer for:
 - Live ARGO status is read-only and shows full / confirmed empty / unmaterialised separately.
 - Occupied cell cards enrich product labels from ARGO.
 - Manual Open button/boundary exists but stays disabled until Lanzi supplies the supported privileged cell-open API.
+
+
+### 20 Sep 2026 — stale bound-token hardening
+
+Observed Magento critical log during kiosk-bound requests:
+
+```text
+Composite reader could not read a token
+```
+
+Likely deployment/cache-clear edge case: css_kiosk can still hold its short-lived session while Magento's cached `cssks2_` bound-session record has been cleared. The next request carries a valid-looking custom token with no server binding.
+
+Fluid PR #97 was hardened so an invalid/stale bound kiosk token no longer falls through to Magento's native token reader. It remains unauthenticated and is rejected by the existing kiosk GraphQL guard. Unit coverage asserts the native token callback is not invoked for this path.
+
+Acceptance after deploy:
+
+- sign out/reset the old kiosk session;
+- tap the card to establish a fresh bound session;
+- load catalogue/basket/Locker;
+- confirm the Magento log does not emit the Composite reader critical message.
