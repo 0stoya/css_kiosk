@@ -1,6 +1,6 @@
 # CSS Kiosk Roadmap
 
-Updated: 8 Sep 2026
+Updated: 20 Sep 2026
 
 ## Product intent
 
@@ -17,7 +17,7 @@ The browser/server commerce path is now accepted through local-locker order plac
 - **K4 — Android kiosk shell:** next hardware/native milestone.
 - **K5 — production serving:** planned after the physical kiosk/runtime boundary is accepted.
 
-Physical NFC/Android and locker door/compartment control remain separate hardware/provider-adapter work; they are not prerequisites for the already accepted Magento commerce path.
+Physical NFC/Android remains separate hardware work. NEXT ARGO API discovery now shows that CSS does not need direct locker door/compartment control: CSS will correlate OGL orders to ARGO operational carts, while ARGO remains authoritative for dynamic physical slot allocation and withdrawal. See `docs/ARGO_LOCKER_API_DISCOVERY.md`.
 
 ## Non-negotiable Magento boundary
 
@@ -275,7 +275,7 @@ Status: next hardware/native milestone
 - [ ] watchdog / recovery
 - [ ] remote version visibility
 - [ ] secure native ↔ web/application bridge
-- [ ] define/implement the physical locker provider adapter for assignment, compartment and door-control operations
+- [ ] implement the NEXT ARGO provider adapter for employee/cart correlation and withdrawal; physical slot/door allocation remains inside ARGO (`docs/ARGO_LOCKER_API_DISCOVERY.md`)
 - [ ] complete an office hardware acceptance pass on the TouchWo and locker equipment
 
 ## K5 — production serving
@@ -297,7 +297,7 @@ The remaining work is now concentrated rather than another catalogue rewrite:
 1. K0 hardening: inactivity reset and explicit degraded-network behaviour.
 2. Commercial verification: known customer/company pricing and product-visibility evidence.
 3. K4 hardware: inspect the TouchWo, prove physical NFC, provision Android device identity and establish the native kiosk shell.
-4. Physical locker integration: provider adapter for assignment/compartment/door control after the API/hardware contract is confirmed.
+4. Physical locker integration: build the safe read-side NEXT ARGO provider foundation now; keep live cart/withdrawal writes disabled until Lanzi confirms the remaining write payloads and lifecycle semantics in `docs/ARGO_LOCKER_API_DISCOVERY.md`.
 5. K5 production runtime once the physical-device boundary is accepted.
 
 Optional customer-experience work such as generalized company branding, favourites/common purchases and richer filtering can proceed independently where it does not duplicate the hardware path.
