@@ -164,7 +164,6 @@ export async function createArgoEmployee(
     requestType: "create_employee",
     databaseUuid: configuredArgoDatabaseUuid(),
     parameters,
-    write: true,
   });
 
   return employee(dataRecord(body, "create_employee"), "create_employee.data");
