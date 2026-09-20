@@ -2,7 +2,7 @@
   min-width: 0;
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
-  grid-template-rows: minmax(138px, auto) 48px;
+  grid-template-rows: 160px 48px;
   overflow: hidden;
   border: 1px solid var(--css-border);
   border-radius: 15px;
@@ -11,7 +11,7 @@
 }
 
 .image {
-  min-height: 138px;
+  height: 160px;
   grid-column: 1;
   grid-row: 1;
   display: grid;
@@ -24,8 +24,9 @@
 .image img {
   width: 100%;
   height: 100%;
-  min-height: 138px;
   display: block;
+  box-sizing: border-box;
+  padding: 10px;
   object-fit: contain;
   object-position: center;
   background: #f4f7fa;
@@ -147,10 +148,14 @@
 @media (max-width: 760px) {
   .card {
     grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-rows: 148px 48px;
   }
 
-  .image,
+  .image {
+    height: 148px;
+  }
+
   .image img {
-    min-height: 132px;
+    padding: 9px;
   }
 }
