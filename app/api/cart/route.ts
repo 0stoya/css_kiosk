@@ -13,6 +13,10 @@ import {
   removeAuthenticatedBasketItem,
   updateAuthenticatedBasketItem,
 } from "@/lib/magento/cart";
+import {
+  assignCurrentKioskCartEmployee,
+  MagentoKioskEmployeeError,
+} from "@/lib/magento/kiosk-employee";
 
 export const runtime = "nodejs";
 
@@ -160,11 +164,23 @@ export async function POST(request: Request) {
         quantity,
         selectedOptions: optionUids,
       });
+      if (session.employee) {
+        await assignCurrentKioskCartEmployee({
+          token: session.magentoToken,
+          employeeId: session.employee.employeeId,
+        });
+      }
     } else if (payload.action === "add_grouped") {
       basket = await addAuthenticatedGroupedBasketItems({
         token: session.magentoToken,
         items: grouped,
       });
+      if (session.employee) {
+        await assignCurrentKioskCartEmployee({
+          token: session.magentoToken,
+          employeeId: session.employee.employeeId,
+        });
+      }
     } else if (payload.action === "update") {
       basket = await updateAuthenticatedBasketItem({
         token: session.magentoToken,
@@ -185,6 +201,26 @@ export async function POST(request: Request) {
       basket,
     });
   } catch (error) {
+    if (error instanceof MagentoKioskEmployeeError) {
+      const status =
+        error.code === "UNAVAILABLE"
+          ? 503
+          : error.code === "REJECTED"
+            ? 409
+            : 502;
+      return NextResponse.json(
+        {
+          ok: false,
+          code: `BASKET_EMPLOYEE_${error.code}`,
+          error:
+            error.code === "REJECTED"
+              ? error.message
+              : "The basket Employee assignment could not be completed right now.",
+        },
+        { status },
+      );
+    }
+
     if (error instanceof MagentoCartError) {
       const status = error.code === "UNAVAILABLE" ? 503 : error.code === "REJECTED" ? 409 : 502;
       return NextResponse.json(
