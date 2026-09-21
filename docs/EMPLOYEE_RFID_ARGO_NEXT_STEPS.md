@@ -1298,3 +1298,57 @@ The kiosk still must ensure the authenticated cart is assigned to the canonical 
 5. automatic whole-cart Employee assignment;
 6. SKU → ARGO product mapping;
 7. order → ARGO cart creation.
+
+
+### 21 Sep 2026 — authorised Employee RFID enrollment handshake
+
+Opened css_kiosk PR #33:
+
+```text
+Add authorised Employee RFID enrollment handshake
+```
+
+Adds:
+
+- 5-minute one-use Employee enrollment codes;
+- server-to-server authenticated enrollment issuer for css_admin;
+- trusted-device kiosk lookup/completion endpoint;
+- kiosk UI: enter code → show exact Employee → tap RFID;
+- reuse of the existing Magento card-link/sign-in flow if the RFID has not been linked to the Employee's own Magento account yet;
+- company/customer/RFID identity cross-checks before canonical Employee + ARGO linkage;
+- code claim/release/consume semantics so failed provider reconciliation does not burn the code;
+- only the newest still-pending code for one Employee remains valid.
+
+Opened css_admin PR #103:
+
+```text
+Add Employee RFID enrollment action
+```
+
+Each active Employee row gets an RFID action that:
+
+```text
+reload exact canonical Employee
+→ server-to-server call to css_kiosk
+→ display 8-character enrollment code + expiry
+```
+
+Required shared configuration:
+
+```text
+css_kiosk:
+  KIOSK_EMPLOYEE_ENROLLMENT_SHARED_SECRET=<strong random secret>
+
+css_admin:
+  CSS_KIOSK_BASE_URL=https://kiosk.csscdn.co.uk
+  KIOSK_EMPLOYEE_ENROLLMENT_SHARED_SECRET=<same secret>
+```
+
+The secret is server-only and the raw RFID never passes through css_admin.
+
+Next after #33/#103 live acceptance:
+
+1. normal Employee card sign-in resolves the dedicated Employee link;
+2. attach Employee context to the kiosk session automatically;
+3. automatically call `cssAssignCartEmployee` for the active customer cart;
+4. then build SKU → ARGO product mapping and order → `create_cart`.
