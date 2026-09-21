@@ -7,6 +7,7 @@ import {
 import {
   createKioskSession,
   destroyKioskSession,
+  type KioskSessionEmployeeContext,
 } from "@/lib/kiosk/session-store";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import { getVerifiedKioskCustomer } from "@/lib/magento/customer-context";
@@ -76,6 +77,7 @@ async function replacePreviousSession(deviceId: string) {
 export async function establishAuthenticatedKioskSession(input: {
   deviceId: string;
   linkedCustomer: VerifiedKioskCustomer;
+  employee?: KioskSessionEmployeeContext | null;
   rfidBadge?: string | null;
 }) {
   let magentoToken = "";
@@ -113,6 +115,7 @@ export async function establishAuthenticatedKioskSession(input: {
       deviceId: input.deviceId,
       magentoToken,
       customer,
+      employee: input.employee,
       rfidBadge: input.rfidBadge,
     });
 
