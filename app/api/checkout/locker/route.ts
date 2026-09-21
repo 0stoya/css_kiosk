@@ -257,7 +257,8 @@ export async function POST(request: Request) {
     try {
       argoFulfilment = await finaliseArgoOrderBridge({
         preflight: argoPreflight,
-        creditOrderNumber: submission.creditOrderNumber,
+        creditOrderNumber:
+          submission.creditOrderNumber || `ID-${submission.creditOrderId}`,
         magentoOrderNumber: submission.orderNumber,
         oglOrderNumber: submission.oglOrderNumber,
       });
