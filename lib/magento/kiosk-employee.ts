@@ -7,26 +7,6 @@ type GraphQLResponse<TData> = {
   errors?: GraphQLErrorItem[];
 };
 
-export type KioskCanonicalEmployee = {
-  companyId: number;
-  employeeId: number;
-  employeeCode: string | null;
-  firstName: string;
-  lastName: string;
-  active: boolean;
-};
-
-type EmployeeData = {
-  css_company_employee?: {
-    employee_id?: number | null;
-    company_id?: number | null;
-    employee_code?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    active?: boolean | null;
-  } | null;
-};
-
 type AssignEmployeeData = {
   cssAssignCartEmployee?: {
     id?: string | null;
@@ -42,19 +22,6 @@ export class MagentoKioskEmployeeError extends Error {
     this.name = "MagentoKioskEmployeeError";
   }
 }
-
-const EXACT_EMPLOYEE_QUERY = /* GraphQL */ `
-  query KioskExactEmployee($employeeId: Int!) {
-    css_company_employee(employee_id: $employeeId) {
-      employee_id
-      company_id
-      employee_code
-      first_name
-      last_name
-      active
-    }
-  }
-`;
 
 const ASSIGN_CART_EMPLOYEE_MUTATION = /* GraphQL */ `
   mutation KioskAssignCartEmployee($cartId: String!, $employeeId: Int!) {
@@ -87,7 +54,7 @@ async function requestMagento<TData>(input: {
     });
   } catch {
     throw new MagentoKioskEmployeeError(
-      "Magento Employee validation is unavailable right now.",
+      "Magento Employee assignment is unavailable right now.",
       "UNAVAILABLE",
     );
   }
@@ -97,28 +64,28 @@ async function requestMagento<TData>(input: {
     body = (await response.json()) as GraphQLResponse<TData>;
   } catch {
     throw new MagentoKioskEmployeeError(
-      "Magento returned an invalid Employee response.",
+      "Magento returned an invalid Employee assignment response.",
       "INVALID_RESPONSE",
     );
   }
 
   if (body.errors?.length) {
     throw new MagentoKioskEmployeeError(
-      body.errors[0]?.message || "Magento rejected the Employee operation.",
+      body.errors[0]?.message || "Magento rejected the Employee assignment.",
       "REJECTED",
     );
   }
 
   if (!response.ok) {
     throw new MagentoKioskEmployeeError(
-      "Magento Employee validation is unavailable right now.",
+      "Magento Employee assignment is unavailable right now.",
       "UNAVAILABLE",
     );
   }
 
   if (!body.data) {
     throw new MagentoKioskEmployeeError(
-      "Magento returned an invalid Employee response.",
+      "Magento returned an invalid Employee assignment response.",
       "INVALID_RESPONSE",
     );
   }
@@ -134,59 +101,6 @@ function positiveInteger(value: number, label: string) {
     );
   }
   return value;
-}
-
-export async function getExactKioskEmployee(input: {
-  token: string;
-  companyId: number;
-  employeeId: number;
-}): Promise<KioskCanonicalEmployee> {
-  const employeeId = positiveInteger(input.employeeId, "employee_id");
-  const companyId = positiveInteger(input.companyId, "company_id");
-
-  const data = await requestMagento<EmployeeData>({
-    token: input.token,
-    query: EXACT_EMPLOYEE_QUERY,
-    variables: { employeeId },
-  });
-
-  const employee = data.css_company_employee;
-  if (
-    !employee ||
-    typeof employee.employee_id !== "number" ||
-    typeof employee.company_id !== "number" ||
-    typeof employee.first_name !== "string" ||
-    typeof employee.last_name !== "string" ||
-    typeof employee.active !== "boolean"
-  ) {
-    throw new MagentoKioskEmployeeError(
-      "Magento returned an invalid canonical Employee.",
-      "INVALID_RESPONSE",
-    );
-  }
-
-  if (
-    employee.employee_id !== employeeId ||
-    employee.company_id !== companyId
-  ) {
-    throw new MagentoKioskEmployeeError(
-      "Magento returned an Employee for the wrong company context.",
-      "INVALID_RESPONSE",
-    );
-  }
-
-  return {
-    companyId,
-    employeeId,
-    employeeCode:
-      typeof employee.employee_code === "string" &&
-      employee.employee_code.trim()
-        ? employee.employee_code.trim()
-        : null,
-    firstName: employee.first_name.trim(),
-    lastName: employee.last_name.trim(),
-    active: employee.active,
-  };
 }
 
 export async function assignKioskCartEmployee(input: {
