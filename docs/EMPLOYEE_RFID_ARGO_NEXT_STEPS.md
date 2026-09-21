@@ -1182,3 +1182,49 @@ css_company_employees
 ```
 
 Employee lookup/browsing remains outside the kiosk-bound customer session. The future authorised enrollment flow will provide the exact canonical Employee identity to css_kiosk, which then stores only the trusted Employee mapping and uses `cssAssignCartEmployee` for the cart.
+
+
+### 21 Sep 2026 — company kiosk commerce actor is the next prerequisite
+
+Employee RFID identification and Magento commerce authentication must remain separate.
+
+A canonical Employee is a beneficiary and deliberately has no Magento login. Therefore Employee-card sign-in needs a configured company user to act as the Magento commerce actor:
+
+```text
+Employee RFID
+  → canonical Employee identity
+  → company kiosk commerce actor
+  → existing bound Magento customer/company session
+  → cssAssignCartEmployee(employee_id)
+```
+
+The existing kiosk assertion exchange already supports this safely from trusted server-side IDs and does not require persisting a password.
+
+Recommended durable configuration:
+
+```text
+company_id
+commerce_customer_id
+commerce_company_user_id
+configured_at / updated_at
+```
+
+Initial administration should select an existing company user with checkout permission rather than silently using whoever performed Employee enrollment. Prefer a clearly designated "Kiosk Buyer" company user where practical.
+
+The css_admin company-management query already exposes both `customer_id` and company `user_id`, plus `can_checkout`, so the admin UI has enough data to select/validate the actor without another Fluid schema change.
+
+Important basket-isolation requirement:
+
+A newly authenticated Employee must never inherit another Employee's abandoned basket. Before Employee-card authentication is considered complete, css_kiosk must guarantee an empty/current basket for that Employee/commerce-actor context.
+
+If one commerce actor is ever used by multiple physical kiosks concurrently, Magento's single active customer cart becomes a concurrency concern. Initial deployment should bind the actor to the intended kiosk/site, and multi-kiosk concurrency must be addressed explicitly before scaling that pattern.
+
+Recommended next implementation sequence:
+
+1. company kiosk commerce-actor configuration;
+2. server-to-server css_admin → css_kiosk enrollment API;
+3. short-lived one-use Employee enrollment code;
+4. kiosk enrollment mode + RFID scan;
+5. Employee-card sign-in using configured commerce actor;
+6. basket isolation + automatic `cssAssignCartEmployee`;
+7. product mapping and ARGO cart creation.
