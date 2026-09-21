@@ -8,7 +8,7 @@ export {
   normalizeArgoBadge,
   resolveArgoEmployeeByBadge,
 } from "@/lib/argo/employees";
-export { getArgoProduct, listArgoProducts } from "@/lib/argo/products";
+export { getArgoProduct, listArgoProducts, resolveArgoProductBySku } from "@/lib/argo/products";
 export { getArgoCart, listArgoCarts, verifyArgoCartCorrelation } from "@/lib/argo/carts";
 export {
   createArgoCart,
