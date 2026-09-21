@@ -99,11 +99,7 @@ export function LockerAdminPanel({
   const [openError, setOpenError] = useState<string | null>(null);
 
   const loadStatus = useCallback(
-    async (refresh = false) => {
-      if (refresh) setRefreshing(true);
-      else setLoading(true);
-      setError(null);
-
+    async () => {
       try {
         const response = await signedFetch("/api/locker/admin", {
           method: "POST",
@@ -138,6 +134,18 @@ export function LockerAdminPanel({
     void loadStatus();
   }, [loadStatus]);
 
+  function refreshStatus() {
+    setRefreshing(true);
+    setError(null);
+    void loadStatus();
+  }
+
+  function retryStatus() {
+    setLoading(true);
+    setError(null);
+    void loadStatus();
+  }
+
   async function requestOpen(position: LockerPosition) {
     if (!capability?.canOpen || !capability.manualOpenAvailable) return;
     setOpenError(null);
@@ -160,7 +168,8 @@ export function LockerAdminPanel({
         return;
       }
 
-      await loadStatus(true);
+      setRefreshing(true);
+      await loadStatus();
     } catch {
       setOpenError("This locker position could not be opened.");
     }
@@ -186,7 +195,7 @@ export function LockerAdminPanel({
             <button
               className={styles.refreshButton}
               type="button"
-              onClick={() => void loadStatus(true)}
+              onClick={refreshStatus}
               disabled={loading || refreshing}
             >
               {refreshing ? "Refreshing…" : "Refresh"}
@@ -203,7 +212,7 @@ export function LockerAdminPanel({
           <div className={styles.error} role="alert">
             <strong>Locker status unavailable</strong>
             <span>{error}</span>
-            <button type="button" onClick={() => void loadStatus()}>Try again</button>
+            <button type="button" onClick={retryStatus}>Try again</button>
           </div>
         ) : null}
 
