@@ -5,7 +5,7 @@ import {
   getArgoCartCorrelationByProjectNumber,
   recordArgoCartCreated,
 } from "@/lib/argo/cart-correlation-store";
-import { listArgoCarts } from "@/lib/argo/carts";
+import { getArgoCart, listArgoCarts } from "@/lib/argo/carts";
 import { getArgoEmployee } from "@/lib/argo/employees";
 import {
   argoExpectedArrivalDate,
@@ -129,6 +129,11 @@ export async function prepareArgoOrderPreflight(input: {
   }
 
   const expectedArrivalDate = argoExpectedArrivalDate(config);
+  if (config.expiryDate < expectedArrivalDate) {
+    throw new Error(
+      "ARGO_CART_NON_EXPIRING_EXPIRY_DATE must not be earlier than the expected arrival date.",
+    );
+  }
   const basketLines = aggregateBasket(input.basket);
   const resolvedProducts = await Promise.all(
     basketLines.map(async (line) => ({
@@ -242,6 +247,32 @@ export async function createArgoCartForFulfilment(input: {
     ) {
       throw new ArgoApiError(
         "The existing NEXT ARGO cart belongs to a different employee or terminal.",
+        "CORRELATION_MISMATCH",
+        409,
+      );
+    }
+
+    const existingCart = await getArgoCart(existing.id);
+    const expectedLines = new Map(
+      fulfilment.lines.map((line) => [line.productId, line.quantity]),
+    );
+    const actualLines = new Map<number, number>();
+    for (const line of existingCart.lines) {
+      actualLines.set(
+        line.productId,
+        (actualLines.get(line.productId) || 0) + line.quantity,
+      );
+    }
+
+    const linesMatch =
+      actualLines.size === expectedLines.size &&
+      [...expectedLines].every(
+        ([productId, quantity]) => actualLines.get(productId) === quantity,
+      );
+
+    if (!linesMatch) {
+      throw new ArgoApiError(
+        "The existing NEXT ARGO cart does not match the saved locker order lines.",
         "CORRELATION_MISMATCH",
         409,
       );
