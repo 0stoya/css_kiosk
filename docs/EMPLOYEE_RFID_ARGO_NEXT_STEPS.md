@@ -1400,3 +1400,36 @@ ARGO_WRITES_ENABLED=true
 ```
 
 Do not infer that an observed cart is loaded merely because it has product lines. Use a cart confirmed loaded by Lanzi/operations/the machine.
+
+
+### 21 Sep 2026 — Open locker UX uses the sign-in RFID
+
+PR #34 was simplified after physical UX review.
+
+Product matching remains:
+
+```text
+Magento SKU
+→ exact ARGO customer_code
+→ fallback exact ARGO code
+→ one match = product_id
+```
+
+Because the kiosk company's catalogue is deliberately limited, no separate product-mapping admin UI is planned unless real catalogue data proves code alignment is insufficient.
+
+The manager/admin physical action keeps the operator-facing label **Open locker**, but is cart-scoped underneath:
+
+```text
+Open locker
+→ request_cart_withdrawal(known cart_id)
+→ ARGO local confirmation
+→ ARGO chooses/opens the cart compartment(s)
+```
+
+The admin does not scan their badge a second time.
+
+When a numeric RFID is used for kiosk login, css_kiosk keeps the badge only in the current in-memory kiosk session (maximum existing session lifetime), never in SQLite and never in browser state. The value is discarded on logout/expiry and is used transiently as the withdrawal `user_badge`.
+
+The Open locker form therefore needs only the known loaded `cart_id`.
+
+Per-cell Open buttons remain disabled because ARGO does not expose arbitrary cell opening.
