@@ -1479,3 +1479,69 @@ RFID login
 The browser never supplies an Employee ID.
 
 Dependency note: css_kiosk #33 is still open in GitHub and should be merged before production relies on new Employee enrollment records.
+
+
+### 21 Sep 2026 — Magento/OGL → ARGO cart bridge
+
+Opened css_kiosk PR #38:
+
+```text
+Bridge locker orders into NEXT ARGO carts
+```
+
+When explicitly enabled, checkout now preflights every basket SKU against NEXT ARGO before Magento order placement:
+
+```text
+Magento SKU
+→ exact active ARGO customer_code
+→ fallback exact active ARGO code
+→ one product_id
+```
+
+Missing/ambiguous mappings fail before the order is submitted.
+
+The bridge requires explicit date policy and has no implicit production defaults:
+
+```text
+ARGO_ORDER_BRIDGE_ENABLED=false
+ARGO_CART_NON_EXPIRING_EXPIRY_DATE=<agreed YYYY-MM-DD sentinel>
+ARGO_CART_EXPECTED_ARRIVAL_OFFSET_DAYS=<agreed integer>
+```
+
+`ARGO_WRITES_ENABLED=true` is also required before the bridge may be enabled.
+
+After Fluid submission, css_kiosk persists the resolved ARGO fulfilment snapshot without raw RFID:
+
+```text
+credit order reference
+Magento order
+OGL order
+ARGO employee_id
+terminal_id
+ARGO product_id + qty
+resolved line dates
+status
+ARGO cart_id
+```
+
+States:
+
+```text
+WAITING_MAGENTO
+WAITING_OGL
+READY
+CREATED
+FAILED
+```
+
+Approval-required orders are retained as `WAITING_MAGENTO`. Placed orders without OGL reference are retained as `WAITING_OGL`.
+
+If the OGL order number is already available, css_kiosk immediately creates the ARGO cart with:
+
+```text
+project_number = OGL order number
+```
+
+Before create/retry it checks both local correlation and provider carts for an exact project-number match. Any existing ARGO cart must match terminal, Employee, product IDs and quantities before it is adopted.
+
+Next slice after #38 is a retry/reconciliation worker for WAITING_MAGENTO / WAITING_OGL / FAILED so delayed approvals/exports complete without the original RFID session.
