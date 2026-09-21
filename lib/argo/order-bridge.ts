@@ -7,7 +7,7 @@ import {
   getArgoOrderBridgeConfig,
 } from "@/lib/argo/order-bridge-config";
 import {
-  getArgoOrderFulfilment,
+  getArgoOrderFulfilmentByMagentoOrder,
   markArgoOrderFulfilmentCreated,
   markArgoOrderFulfilmentFailed,
   recordArgoOrderFulfilment,
@@ -26,6 +26,10 @@ export type ArgoOrderPreflight = {
 
 export type ArgoOrderBridgeResult =
   | { status: "DISABLED" }
+  | {
+      status: "WAITING_MAGENTO";
+      creditOrderNumber: string | null;
+    }
   | {
       status: "WAITING_OGL";
       magentoOrderNumber: string;
@@ -150,7 +154,9 @@ export async function createArgoCartForFulfilment(input: {
   magentoOrderNumber: string;
   oglOrderNumber: string;
 }) {
-  const fulfilment = getArgoOrderFulfilment(input.magentoOrderNumber);
+  const fulfilment = getArgoOrderFulfilmentByMagentoOrder(
+    input.magentoOrderNumber,
+  );
   if (!fulfilment) {
     throw new Error("ARGO fulfilment snapshot was not found.");
   }
@@ -214,12 +220,27 @@ export async function createArgoCartForFulfilment(input: {
 
 export async function finaliseArgoOrderBridge(input: {
   preflight: ArgoOrderPreflight | null;
-  magentoOrderNumber: string;
+  creditOrderNumber: string | null;
+  magentoOrderNumber: string | null;
   oglOrderNumber: string | null;
 }): Promise<ArgoOrderBridgeResult> {
   if (!input.preflight) return { status: "DISABLED" };
 
+  if (!input.magentoOrderNumber) {
+    recordArgoOrderFulfilment({
+      creditOrderNumber: input.creditOrderNumber,
+      argoEmployeeId: input.preflight.argoEmployeeId,
+      terminalId: input.preflight.terminalId,
+      lines: input.preflight.lines,
+    });
+    return {
+      status: "WAITING_MAGENTO",
+      creditOrderNumber: input.creditOrderNumber,
+    };
+  }
+
   recordArgoOrderFulfilment({
+    creditOrderNumber: input.creditOrderNumber,
     magentoOrderNumber: input.magentoOrderNumber,
     oglOrderNumber: input.oglOrderNumber,
     argoEmployeeId: input.preflight.argoEmployeeId,
