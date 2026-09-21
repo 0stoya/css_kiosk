@@ -45,3 +45,23 @@ export type {
   ArgoWithdrawalRequest,
   RequestArgoCartWithdrawalInput,
 } from "@/lib/argo/withdrawals";
+
+export {
+  createArgoCartForFulfilment,
+  finaliseArgoOrderBridge,
+  prepareArgoOrderPreflight,
+} from "@/lib/argo/order-bridge";
+export {
+  getArgoOrderFulfilmentByKey,
+  getArgoOrderFulfilmentByMagentoOrder,
+  recordArgoOrderFulfilment,
+} from "@/lib/argo/order-fulfilment-store";
+export type {
+  ArgoOrderBridgeResult,
+  ArgoOrderPreflight,
+} from "@/lib/argo/order-bridge";
+export type {
+  ArgoOrderFulfilment,
+  ArgoOrderFulfilmentStatus,
+  PendingArgoOrderLine,
+} from "@/lib/argo/order-fulfilment-store";
