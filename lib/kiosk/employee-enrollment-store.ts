@@ -220,6 +220,12 @@ export function issueEmployeeEnrollment(input: {
   const createdAt = new Date();
   const expiresAt = new Date(createdAt.getTime() + ENROLLMENT_TTL_MS);
 
+  // Only the latest still-pending code for an Employee remains valid.
+  db.prepare(`
+    DELETE FROM employee_enrollment_requests
+    WHERE company_id = ? AND employee_id = ? AND status = 'pending'
+  `).run(companyId, employeeId);
+
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = generateCode();
     const result = db.prepare(`
