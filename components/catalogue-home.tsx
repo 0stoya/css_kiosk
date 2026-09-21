@@ -140,12 +140,26 @@ type LockerOrderSubmission = {
   oglExported: boolean;
 };
 
+type ArgoFulfilmentResult =
+  | { status: "DISABLED" }
+  | { status: "WAITING_MAGENTO"; creditOrderNumber: string | null }
+  | { status: "WAITING_OGL"; magentoOrderNumber: string }
+  | {
+      status: "CREATED";
+      magentoOrderNumber: string;
+      oglOrderNumber: string;
+      argoCartId: number;
+      providerState: string;
+    }
+  | { status: "FAILED"; magentoOrderNumber: string | null; error: string };
+
 type LockerCheckoutResponse = {
   ok?: boolean;
   code?: string;
   error?: string;
   checkout?: LockerCheckoutReview;
   submission?: LockerOrderSubmission;
+  argoFulfilment?: ArgoFulfilmentResult;
 };
 
 type LockerAdminCapabilityResponse = {
@@ -279,6 +293,7 @@ export function CatalogueHome({
   const [lockerCheckoutLoading, setLockerCheckoutLoading] = useState(false);
   const [lockerCheckoutError, setLockerCheckoutError] = useState<string | null>(null);
   const [lockerOrderSubmission, setLockerOrderSubmission] = useState<LockerOrderSubmission | null>(null);
+  const [argoFulfilment, setArgoFulfilment] = useState<ArgoFulfilmentResult | null>(null);
   const [lockerOrderSubmitting, setLockerOrderSubmitting] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<CatalogueProduct | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
@@ -417,6 +432,7 @@ export function CatalogueHome({
     setLockerCheckout(null);
     setLockerCheckoutError(null);
     setLockerOrderSubmission(null);
+    setArgoFulfilment(null);
 
     try {
       const response = await signedFetch("/api/cart", {
@@ -514,6 +530,7 @@ export function CatalogueHome({
 
       setLockerCheckout(body.checkout);
       setLockerOrderSubmission(body.submission);
+      setArgoFulfilment(body.argoFulfilment || null);
       if (body.submission.orderPlaced) {
         setBasket({ totalQuantity: 0, items: [], subtotal: null, grandTotal: null });
       }
@@ -596,6 +613,7 @@ export function CatalogueHome({
     setLockerCheckout(null);
     setLockerCheckoutError(null);
     setLockerOrderSubmission(null);
+    setArgoFulfilment(null);
     setSelectedProduct(product);
     setSelectedQuantity(1);
     setBasketError(null);
@@ -1169,6 +1187,17 @@ export function CatalogueHome({
                     ) : (
                       <span>The OGL and locker reference will be created after the Magento order is placed.</span>
                     )}
+                    {argoFulfilment?.status === "CREATED" ? (
+                      <span>
+                        ARGO cart {argoFulfilment.argoCartId} · awaiting physical loading
+                      </span>
+                    ) : argoFulfilment?.status === "WAITING_OGL" ? (
+                      <span>Locker preparation queued · waiting for OGL export</span>
+                    ) : argoFulfilment?.status === "WAITING_MAGENTO" ? (
+                      <span>Locker preparation queued · waiting for approval/order placement</span>
+                    ) : argoFulfilment?.status === "FAILED" ? (
+                      <span>Order placed · locker preparation needs attention</span>
+                    ) : null}
                   </div>
                 ) : (
                   <p className={styles.optionNotice}>
@@ -1190,6 +1219,7 @@ export function CatalogueHome({
                           setLockerCheckout(null);
                           setLockerCheckoutError(null);
                           setLockerOrderSubmission(null);
+                          setArgoFulfilment(null);
                         }}
                         disabled={lockerOrderSubmitting}
                       >
