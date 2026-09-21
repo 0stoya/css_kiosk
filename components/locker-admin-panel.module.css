@@ -68,7 +68,6 @@
 
 .refreshButton,
 .closeButton,
-.openButton,
 .error button {
   min-height: 48px;
   border-radius: 12px;
@@ -92,8 +91,7 @@
   line-height: 1;
 }
 
-.refreshButton:disabled,
-.openButton:disabled {
+.refreshButton:disabled {
   cursor: default;
   opacity: .5;
 }
@@ -291,20 +289,6 @@
   font-size: 12px;
 }
 
-.openButton {
-  width: 100%;
-  padding: 9px 14px;
-  border: 2px solid var(--css-primary);
-  background: var(--css-primary);
-  color: white;
-  font-size: 15px;
-}
-
-.openButton:disabled {
-  border-color: #b9c6d0;
-  background: #eef2f5;
-  color: #6f7f8c;
-}
 
 .emptyPositionList {
   display: flex;
