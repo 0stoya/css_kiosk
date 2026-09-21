@@ -4,6 +4,9 @@ export type KioskAuthState =
   | "unregistered"
   | "linking"
   | "confirm-link"
+  | "employee-enrollment-code"
+  | "employee-enrollment-ready"
+  | "employee-enrollment-complete"
   | "welcome"
   | "catalogue"
   | "error";
