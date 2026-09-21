@@ -49,13 +49,36 @@ export function normalizeArgoBadge(value: string) {
   return badge;
 }
 
+function providerBadge(value: unknown, context: string) {
+  if (typeof value === "string" && /^\d{1,20}$/.test(value.trim())) {
+    return value.trim();
+  }
+  if (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  ) {
+    return String(value);
+  }
+  throw new ArgoApiError(
+    `NEXT ARGO returned an invalid response for ${context}.`,
+    "INVALID_RESPONSE",
+    502,
+  );
+}
+
+function equivalentBadge(left: string, right: string) {
+  const normalise = (value: string) => value.replace(/^0+(?=\d)/, "");
+  return normalise(left) === normalise(right);
+}
+
 function employee(value: unknown, context: string): ArgoEmployee {
   const row = record(value, context);
 
   return {
     id: positiveInteger(row.id, `${context}.id`),
     plantId: positiveInteger(row.plant_id, `${context}.plant_id`),
-    badge: text(row.badge, `${context}.badge`),
+    badge: providerBadge(row.badge, `${context}.badge`),
     firstName: nullableText(row.first_name, `${context}.first_name`),
     lastName: nullableText(row.last_name, `${context}.last_name`),
     employeeNumber: nullableText(row.employee_number, `${context}.employee_number`),
@@ -116,7 +139,8 @@ export async function resolveArgoEmployeeByBadge(
   });
 
   const matches = page.data.filter(
-    (item) => item.plantId === config.plantId && item.badge === badge,
+    (item) =>
+      item.plantId === config.plantId && equivalentBadge(item.badge, badge),
   );
 
   if (matches.length > 1) {
