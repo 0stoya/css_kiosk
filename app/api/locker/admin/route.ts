@@ -137,11 +137,15 @@ export async function POST(request: Request) {
 
   const canViewStatus = capability?.canViewLockerStatus === true;
   const sessionBadge = session.rfidBadge;
-  const canReleaseCart =
-    canViewStatus &&
-    getArgoConfig().writesEnabled &&
-    typeof sessionBadge === "string" &&
-    /^\d{1,20}$/.test(sessionBadge);
+  const writesEnabled = getArgoConfig().writesEnabled;
+  const hasSessionBadge =
+    typeof sessionBadge === "string" && /^\d{1,20}$/.test(sessionBadge);
+  const canReleaseCart = canViewStatus && writesEnabled && hasSessionBadge;
+  const releaseUnavailableReason = !writesEnabled
+    ? "ARGO writes disabled"
+    : !hasSessionBadge
+      ? "Sign in with RFID again"
+      : null;
 
   if (payload.action === "capability") {
     return NextResponse.json({
@@ -150,6 +154,7 @@ export async function POST(request: Request) {
         canViewStatus,
         canOpen: false,
         canReleaseCart,
+        releaseUnavailableReason,
         manualOpenAvailable: false,
       },
     });
@@ -320,6 +325,7 @@ export async function POST(request: Request) {
         canViewStatus: true,
         canOpen: false,
         canReleaseCart,
+        releaseUnavailableReason,
         manualOpenAvailable: false,
       },
       status,
