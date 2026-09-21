@@ -11,13 +11,16 @@ export type PendingArgoOrderLine = {
 };
 
 export type ArgoOrderFulfilmentStatus =
+  | "WAITING_MAGENTO"
   | "WAITING_OGL"
   | "READY"
   | "CREATED"
   | "FAILED";
 
 export type ArgoOrderFulfilment = {
-  magentoOrderNumber: string;
+  fulfilmentKey: string;
+  creditOrderNumber: string | null;
+  magentoOrderNumber: string | null;
   oglOrderNumber: string | null;
   argoEmployeeId: number;
   terminalId: number;
@@ -30,7 +33,9 @@ export type ArgoOrderFulfilment = {
 };
 
 type Row = {
-  magento_order_number: string;
+  fulfilment_key: string;
+  credit_order_number: string | null;
+  magento_order_number: string | null;
   ogl_order_number: string | null;
   argo_employee_id: number;
   terminal_id: number;
@@ -66,14 +71,22 @@ function getDatabase() {
     PRAGMA synchronous = NORMAL;
     PRAGMA busy_timeout = 5000;
 
-    CREATE TABLE IF NOT EXISTS argo_order_fulfilments (
-      magento_order_number TEXT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS argo_order_fulfilments_v2 (
+      fulfilment_key TEXT PRIMARY KEY,
+      credit_order_number TEXT,
+      magento_order_number TEXT UNIQUE,
       ogl_order_number TEXT,
       argo_employee_id INTEGER NOT NULL,
       terminal_id INTEGER NOT NULL,
       lines_json TEXT NOT NULL,
       status TEXT NOT NULL CHECK (
-        status IN ('WAITING_OGL', 'READY', 'CREATED', 'FAILED')
+        status IN (
+          'WAITING_MAGENTO',
+          'WAITING_OGL',
+          'READY',
+          'CREATED',
+          'FAILED'
+        )
       ),
       argo_cart_id INTEGER,
       last_error TEXT,
@@ -81,8 +94,12 @@ function getDatabase() {
       updated_at TEXT NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_argo_order_fulfilments_status
-      ON argo_order_fulfilments(status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_argo_order_fulfilments_v2_credit
+      ON argo_order_fulfilments_v2(credit_order_number)
+      WHERE credit_order_number IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_argo_order_fulfilments_v2_status
+      ON argo_order_fulfilments_v2(status);
   `);
 
   database = db;
@@ -135,6 +152,7 @@ function parseLines(value: string): PendingArgoOrderLine[] {
 function fromRow(row: Row | undefined): ArgoOrderFulfilment | null {
   if (!row) return null;
   if (
+    row.status !== "WAITING_MAGENTO" &&
     row.status !== "WAITING_OGL" &&
     row.status !== "READY" &&
     row.status !== "CREATED" &&
@@ -144,10 +162,12 @@ function fromRow(row: Row | undefined): ArgoOrderFulfilment | null {
   }
 
   return {
+    fulfilmentKey: row.fulfilment_key,
+    creditOrderNumber: row.credit_order_number,
     magentoOrderNumber: row.magento_order_number,
     oglOrderNumber: row.ogl_order_number,
-    argoEmployeeId: row.argo_employee_id,
-    terminalId: row.terminal_id,
+    argoEmployeeId: positiveInteger(row.argo_employee_id, "argo_employee_id"),
+    terminalId: positiveInteger(row.terminal_id, "terminal_id"),
     lines: parseLines(row.lines_json),
     status: row.status,
     argoCartId: row.argo_cart_id,
@@ -157,11 +177,12 @@ function fromRow(row: Row | undefined): ArgoOrderFulfilment | null {
   };
 }
 
-export function getArgoOrderFulfilment(magentoOrderNumber: string) {
-  const orderNumber = requiredText(magentoOrderNumber, "magento_order_number");
+function selectBy(column: "fulfilment_key" | "magento_order_number", value: string) {
   const row = getDatabase()
     .prepare(`
       SELECT
+        fulfilment_key,
+        credit_order_number,
         magento_order_number,
         ogl_order_number,
         argo_employee_id,
@@ -172,90 +193,109 @@ export function getArgoOrderFulfilment(magentoOrderNumber: string) {
         last_error,
         created_at,
         updated_at
-      FROM argo_order_fulfilments
-      WHERE magento_order_number = ?
+      FROM argo_order_fulfilments_v2
+      WHERE ${column} = ?
     `)
-    .get(orderNumber) as Row | undefined;
-
+    .get(value) as Row | undefined;
   return fromRow(row);
 }
 
+export function getArgoOrderFulfilmentByKey(fulfilmentKey: string) {
+  return selectBy(
+    "fulfilment_key",
+    requiredText(fulfilmentKey, "fulfilment_key"),
+  );
+}
+
+export function getArgoOrderFulfilmentByMagentoOrder(
+  magentoOrderNumber: string,
+) {
+  return selectBy(
+    "magento_order_number",
+    requiredText(magentoOrderNumber, "magento_order_number"),
+  );
+}
+
 export function recordArgoOrderFulfilment(input: {
-  magentoOrderNumber: string;
+  creditOrderNumber?: string | null;
+  magentoOrderNumber?: string | null;
   oglOrderNumber?: string | null;
   argoEmployeeId: number;
   terminalId: number;
   lines: PendingArgoOrderLine[];
 }) {
-  const magentoOrderNumber = requiredText(
-    input.magentoOrderNumber,
-    "magento_order_number",
-  );
+  const creditOrderNumber = input.creditOrderNumber?.trim() || null;
+  const magentoOrderNumber = input.magentoOrderNumber?.trim() || null;
   const oglOrderNumber = input.oglOrderNumber?.trim() || null;
+  if (!creditOrderNumber && !magentoOrderNumber) {
+    throw new Error(
+      "ARGO fulfilment requires a credit or Magento order reference.",
+    );
+  }
+  if (!input.lines.length) throw new Error("ARGO fulfilment requires lines.");
+
+  const fulfilmentKey = magentoOrderNumber
+    ? `magento:${magentoOrderNumber}`
+    : `credit:${creditOrderNumber}`;
+  const status: ArgoOrderFulfilmentStatus = !magentoOrderNumber
+    ? "WAITING_MAGENTO"
+    : oglOrderNumber
+      ? "READY"
+      : "WAITING_OGL";
   const argoEmployeeId = positiveInteger(
     input.argoEmployeeId,
     "argo_employee_id",
   );
   const terminalId = positiveInteger(input.terminalId, "terminal_id");
-  if (!input.lines.length) throw new Error("ARGO fulfilment requires lines.");
-
-  const db = getDatabase();
   const now = new Date().toISOString();
-  const status: ArgoOrderFulfilmentStatus = oglOrderNumber
-    ? "READY"
-    : "WAITING_OGL";
-  const existing = getArgoOrderFulfilment(magentoOrderNumber);
+  const db = getDatabase();
 
-  if (existing) {
-    if (
-      existing.argoEmployeeId !== argoEmployeeId ||
-      existing.terminalId !== terminalId ||
-      JSON.stringify(existing.lines) !== JSON.stringify(input.lines)
-    ) {
-      throw new Error(
-        "ARGO fulfilment conflicts with an existing Magento order snapshot.",
-      );
-    }
-
-    db.prepare(`
-      UPDATE argo_order_fulfilments
-      SET ogl_order_number = COALESCE(?, ogl_order_number),
-          status = CASE
-            WHEN status = 'CREATED' THEN status
-            WHEN ? IS NOT NULL THEN 'READY'
-            ELSE status
-          END,
-          updated_at = ?
-      WHERE magento_order_number = ?
-    `).run(oglOrderNumber, oglOrderNumber, now, magentoOrderNumber);
-  } else {
-    db.prepare(`
-      INSERT INTO argo_order_fulfilments (
-        magento_order_number,
-        ogl_order_number,
-        argo_employee_id,
-        terminal_id,
-        lines_json,
-        status,
-        argo_cart_id,
-        last_error,
-        created_at,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-    `).run(
-      magentoOrderNumber,
-      oglOrderNumber,
-      argoEmployeeId,
-      terminalId,
-      JSON.stringify(input.lines),
+  db.prepare(`
+    INSERT INTO argo_order_fulfilments_v2 (
+      fulfilment_key,
+      credit_order_number,
+      magento_order_number,
+      ogl_order_number,
+      argo_employee_id,
+      terminal_id,
+      lines_json,
       status,
-      now,
-      now,
+      argo_cart_id,
+      last_error,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+    ON CONFLICT(fulfilment_key) DO UPDATE SET
+      credit_order_number = excluded.credit_order_number,
+      magento_order_number = excluded.magento_order_number,
+      ogl_order_number = COALESCE(excluded.ogl_order_number, ogl_order_number),
+      updated_at = excluded.updated_at
+  `).run(
+    fulfilmentKey,
+    creditOrderNumber,
+    magentoOrderNumber,
+    oglOrderNumber,
+    argoEmployeeId,
+    terminalId,
+    JSON.stringify(input.lines),
+    status,
+    now,
+    now,
+  );
+
+  const stored = getArgoOrderFulfilmentByKey(fulfilmentKey);
+  if (!stored) throw new Error("ARGO fulfilment could not be reloaded.");
+
+  if (
+    stored.argoEmployeeId !== argoEmployeeId ||
+    stored.terminalId !== terminalId ||
+    JSON.stringify(stored.lines) !== JSON.stringify(input.lines)
+  ) {
+    throw new Error(
+      "ARGO fulfilment conflicts with an existing order snapshot.",
     );
   }
 
-  const stored = getArgoOrderFulfilment(magentoOrderNumber);
-  if (!stored) throw new Error("ARGO fulfilment could not be reloaded.");
   return stored;
 }
 
@@ -270,7 +310,7 @@ export function markArgoOrderFulfilmentCreated(input: {
   const now = new Date().toISOString();
 
   const result = getDatabase().prepare(`
-    UPDATE argo_order_fulfilments
+    UPDATE argo_order_fulfilments_v2
     SET ogl_order_number = ?,
         status = 'CREATED',
         argo_cart_id = ?,
@@ -283,7 +323,7 @@ export function markArgoOrderFulfilmentCreated(input: {
     throw new Error("ARGO fulfilment could not be marked created.");
   }
 
-  return getArgoOrderFulfilment(orderNumber);
+  return getArgoOrderFulfilmentByMagentoOrder(orderNumber);
 }
 
 export function markArgoOrderFulfilmentFailed(
@@ -293,9 +333,9 @@ export function markArgoOrderFulfilmentFailed(
   const orderNumber = requiredText(magentoOrderNumber, "magento_order_number");
   const now = new Date().toISOString();
   getDatabase().prepare(`
-    UPDATE argo_order_fulfilments
+    UPDATE argo_order_fulfilments_v2
     SET status = 'FAILED', last_error = ?, updated_at = ?
     WHERE magento_order_number = ?
   `).run(error.trim().slice(0, 2000), now, orderNumber);
-  return getArgoOrderFulfilment(orderNumber);
+  return getArgoOrderFulfilmentByMagentoOrder(orderNumber);
 }
