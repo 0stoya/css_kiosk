@@ -23,7 +23,6 @@ type LockerAdminRequest = {
   action?: unknown;
   cellId?: unknown;
   cartId?: unknown;
-  userBadge?: unknown;
 };
 
 function deviceFailure(error: unknown) {
@@ -137,7 +136,12 @@ export async function POST(request: Request) {
   }
 
   const canViewStatus = capability?.canViewLockerStatus === true;
-  const canReleaseCart = canViewStatus && getArgoConfig().writesEnabled;
+  const sessionBadge = session.rfidBadge;
+  const canReleaseCart =
+    canViewStatus &&
+    getArgoConfig().writesEnabled &&
+    typeof sessionBadge === "string" &&
+    /^\d{1,20}$/.test(sessionBadge);
 
   if (payload.action === "capability") {
     return NextResponse.json({
@@ -180,15 +184,15 @@ export async function POST(request: Request) {
       payload.cartId > 0
         ? payload.cartId
         : null;
-    const userBadge =
-      typeof payload.userBadge === "string" ? payload.userBadge.trim() : "";
-
-    if (cartId === null || !/^\d{1,20}$/.test(userBadge)) {
+    if (cartId === null || !sessionBadge) {
       return NextResponse.json(
         {
           ok: false,
           code: "INVALID_REQUEST",
-          error: "Enter a valid loaded cart ID and numeric collector badge.",
+          error:
+            cartId === null
+              ? "Enter a valid loaded cart ID."
+              : "Sign in again with the RFID badge that should collect this cart.",
         },
         { status: 400 },
       );
@@ -220,7 +224,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const collector = await resolveArgoEmployeeByBadge(userBadge);
+      const collector = await resolveArgoEmployeeByBadge(sessionBadge);
       if (!collector || collector.active === false) {
         return NextResponse.json(
           {
@@ -235,7 +239,7 @@ export async function POST(request: Request) {
       const withdrawal = await requestArgoCartWithdrawal({
         terminalId: terminal.id,
         cartId,
-        userBadge,
+        userBadge: sessionBadge,
       });
 
       return NextResponse.json({
