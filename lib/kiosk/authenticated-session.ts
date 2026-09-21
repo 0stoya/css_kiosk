@@ -76,6 +76,7 @@ async function replacePreviousSession(deviceId: string) {
 export async function establishAuthenticatedKioskSession(input: {
   deviceId: string;
   linkedCustomer: VerifiedKioskCustomer;
+  rfidBadge?: string | null;
 }) {
   let magentoToken = "";
 
@@ -112,6 +113,7 @@ export async function establishAuthenticatedKioskSession(input: {
       deviceId: input.deviceId,
       magentoToken,
       customer,
+      rfidBadge: input.rfidBadge,
     });
 
     await setKioskSessionId(sessionId);
