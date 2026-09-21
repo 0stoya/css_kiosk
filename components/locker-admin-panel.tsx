@@ -61,6 +61,7 @@ type LockerAdminResponse = {
     canViewStatus: boolean;
     canOpen: boolean;
     canReleaseCart?: boolean;
+    releaseUnavailableReason?: string | null;
     manualOpenAvailable: boolean;
   };
   status?: LockerStatus;
@@ -113,7 +114,6 @@ export function LockerAdminPanel({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openError, setOpenError] = useState<string | null>(null);
   const [releaseCartId, setReleaseCartId] = useState("");
   const [releasePending, setReleasePending] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
@@ -207,34 +207,6 @@ export function LockerAdminPanel({
     }
   }
 
-  async function requestOpen(position: LockerPosition) {
-    if (!capability?.canOpen || !capability.manualOpenAvailable) return;
-    setOpenError(null);
-
-    try {
-      const response = await signedFetch("/api/locker/admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "open", cellId: position.cellId }),
-      });
-      const body = (await response.json()) as LockerAdminResponse;
-
-      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
-        onSessionExpired("Your kiosk session has expired. Tap your card to sign in again.");
-        return;
-      }
-
-      if (!response.ok || !body.ok) {
-        setOpenError(body.error || "This locker position could not be opened.");
-        return;
-      }
-
-      setRefreshing(true);
-      await loadStatus();
-    } catch {
-      setOpenError("This locker position could not be opened.");
-    }
-  }
 
   const fullPositions = status?.positions.filter((position) => position.state === "full") || [];
   const emptyPositions = status?.positions.filter((position) => position.state === "empty") || [];
@@ -306,8 +278,6 @@ export function LockerAdminPanel({
               <span>Updated {formatUpdated(status.terminal.modifiedAt)}</span>
             </div>
 
-            {openError ? <p className={styles.openError} role="alert">{openError}</p> : null}
-
             <section className={styles.cartsSection} aria-label="Terminal ARGO carts">
               <div className={styles.sectionHeading}>
                 <div>
@@ -356,7 +326,9 @@ export function LockerAdminPanel({
                   <h3>Open locker</h3>
                 </div>
                 <span className={capability?.canReleaseCart ? styles.liveBadge : styles.pendingBadge}>
-                  {capability?.canReleaseCart ? "Ready" : "Unavailable"}
+                  {capability?.canReleaseCart
+                    ? "Ready"
+                    : capability?.releaseUnavailableReason || "Unavailable"}
                 </span>
               </div>
               <p className={styles.releaseIntro}>
@@ -406,9 +378,6 @@ export function LockerAdminPanel({
                   <p className={styles.eyebrow}>Occupied positions</p>
                   <h3>{fullPositions.length} reported full</h3>
                 </div>
-                {!capability?.manualOpenAvailable ? (
-                  <span className={styles.pendingBadge}>Manual open API pending</span>
-                ) : null}
               </div>
 
               {fullPositions.length ? (
@@ -430,14 +399,6 @@ export function LockerAdminPanel({
                           <span>{position.product.code}</span>
                         ) : null}
                       </div>
-                      <button
-                        className={styles.openButton}
-                        type="button"
-                        disabled={!capability?.canOpen || !capability.manualOpenAvailable}
-                        onClick={() => void requestOpen(position)}
-                      >
-                        Open locker
-                      </button>
                     </article>
                   ))}
                 </div>
@@ -463,11 +424,6 @@ export function LockerAdminPanel({
             ) : null}
 
             <footer className={styles.footer}>
-              <p>
-                {status.manualOpen.available
-                  ? "Opening a position requires current server-side authorisation."
-                  : status.manualOpen.reason}
-              </p>
               {status.summary.unmaterialised > 0 ? (
                 <p>
                   ARGO reports {status.summary.unmaterialised} unmaterialised position
