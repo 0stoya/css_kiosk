@@ -810,3 +810,114 @@ If A is the newly updated contract, use it and persist both `argo_employee_id` a
 - webhook retry/idempotency behaviour;
 - Chelmsford loader `profile_id`;
 - planned `update_employee` fields and semantics.
+
+
+### 21 Sep 2026 — create_cart / upsert_cart_line contract confirmed
+
+The current Lanzi docs now resolve the previous ownership ambiguity.
+
+#### create_cart
+
+`create_cart` creates a cart for a named ARGO employee and now requires:
+
+```text
+terminal_id
+user_badge
+lines[]
+project_number optional
+project_id optional legacy
+```
+
+Each initial line contains:
+
+```text
+product_id
+attribute_id = 0
+quantity
+expiry_date required
+expected_arrival_date required
+```
+
+The employee badge must already exist in ARGO. CSS must therefore resolve/create the ARGO employee before cart creation.
+
+Successful response:
+
+```text
+id            = ARGO cart_id
+terminal_id
+employee_id
+badge
+state = pending
+```
+
+`state=pending` means the cart record exists but the loader has not physically loaded it yet.
+
+CSS should persist the returned `cart_id`, `employee_id`, badge linkage and `project_number` correlation.
+
+Recommended order correlation:
+
+```text
+OGL order number → project_number
+ARGO cart id      → durable provider identifier
+```
+
+#### upsert_cart_line
+
+`upsert_cart_line` is defined as a replace/upsert keyed by:
+
+```text
+cart_id + product_id + attribute_id
+```
+
+Required data:
+
+```text
+cart_id
+product_id
+attribute_id = 0
+quantity
+expiry_date
+expected_arrival_date
+```
+
+Calling it again for the same product + attribute replaces the existing line rather than creating a duplicate.
+
+Only API-created carts are editable. Machine-created carts are rejected with `cart_not_editable`.
+
+#### Date policy still required on CSS side
+
+ARGO requires both dates on every line, even when the goods do not expire.
+
+Before production cart creation, define:
+
+- the CSS source for `expected_arrival_date`;
+- the agreed far-future sentinel used for non-expiring goods;
+- whether real product expiry dates are ever available in OGL/Magento for this flow.
+
+Do not silently invent per-line dates without a documented CSS policy.
+
+#### One documentation inconsistency to clarify
+
+The `upsert_cart_line` input contract states `attribute_id` must be `0`, but the published successful response example currently shows:
+
+```json
+{"attribute_id":4}
+```
+
+Ask Lanzi whether that response example is a typo, an internal translated attribute identifier, or an intentional response value. CSS should continue sending `attribute_id: 0` unless Lanzi says otherwise.
+
+#### Implementation readiness
+
+The write contract is now sufficient to implement, behind the existing ARGO write gate:
+
+```text
+ensure employee by badge
+→ create_cart with initial lines + project_number
+→ persist cart correlation
+→ optional later upsert_cart_line corrections
+→ wait for loader-loaded event / readiness
+→ request_cart_withdrawal
+→ get_withdrawal_status
+```
+
+The next kiosk implementation PR can now add typed `create_cart` and `upsert_cart_line` provider methods and persistence scaffolding without guessing payload shape.
