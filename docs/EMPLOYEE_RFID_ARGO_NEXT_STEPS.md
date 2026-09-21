@@ -1026,3 +1026,39 @@ Before live acceptance, verify the real key capabilities and use disposable agre
 #### Remaining withdrawal contract item
 
 The request side is now defined. The remaining provider contract required for production collection is the full successful/error response shape and terminal state enumeration for `get_withdrawal_status`.
+
+
+### 21 Sep 2026 — Fluid boundary after ARGO write contract
+
+Decision: no Fluid change is required for the core NEXT ARGO integration.
+
+Fluid already owns and exposes the required commerce facts:
+
+- canonical Employee attribution on quote/order lines;
+- Employee purchase-control enforcement;
+- Magento/credit-order lifecycle;
+- locker shipping method;
+- Magento order number;
+- OGL export state and `ogl_order_number` through `css_kiosk_locker_order_status`.
+
+NEXT ARGO logic remains in css_kiosk:
+
+```text
+employee/badge reconciliation
+ARGO product mapping
+create_cart
+upsert_cart_line
+OGL ↔ ARGO cart correlation
+ARGO loaded/completed callbacks
+request_cart_withdrawal
+get_withdrawal_status
+```
+
+For the immediate/auto-approved path css_kiosk can snapshot the basket lines before submission, persist the resulting Magento order number, wait for the OGL number, then create the ARGO cart.
+
+One future production concern exists for approval-required orders: the Magento order/OGL export may happen after the short-lived kiosk customer session is gone. Do not move ARGO writes into Fluid to solve this. Preferred options are:
+
+1. a durable css_kiosk pending-fulfilment job plus a server-side trusted way to observe final OGL export; or
+2. a small Fluid outbound event/callback when a locker Magento order receives its OGL number.
+
+If option 2 is required, Fluid should emit only the commerce event/facts. css_kiosk should still own all ARGO calls and state.
