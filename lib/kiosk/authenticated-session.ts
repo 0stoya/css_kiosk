@@ -15,6 +15,10 @@ import {
   exchangeMagentoKioskAssertion,
   MagentoKioskSessionError,
 } from "@/lib/magento/kiosk-session-exchange";
+import {
+  assignCurrentKioskCartEmployee,
+  MagentoKioskEmployeeError,
+} from "@/lib/magento/kiosk-employee";
 import { revokeMagentoCustomerToken } from "@/lib/magento/revoke-customer-token";
 
 export class AuthenticatedKioskSessionError extends Error {
@@ -109,6 +113,21 @@ export async function establishAuthenticatedKioskSession(input: {
     const freshCustomer = await getVerifiedKioskCustomer(magentoToken);
     const customer = currentCustomerForLinkedContext(input.linkedCustomer, freshCustomer);
 
+    if (input.employee) {
+      if (customer.company?.companyId !== input.employee.companyId) {
+        throw new AuthenticatedKioskSessionError(
+          "This Employee RFID does not match the active company account.",
+          "COMPANY_ACCESS_CHANGED",
+          403,
+        );
+      }
+
+      await assignCurrentKioskCartEmployee({
+        token: magentoToken,
+        employeeId: input.employee.employeeId,
+      });
+    }
+
     await replacePreviousSession(input.deviceId);
 
     const { sessionId, session } = createKioskSession({
@@ -134,6 +153,15 @@ export async function establishAuthenticatedKioskSession(input: {
     }
 
     if (error instanceof AuthenticatedKioskSessionError) throw error;
+    if (error instanceof MagentoKioskEmployeeError) {
+      throw new AuthenticatedKioskSessionError(
+        error.code === "REJECTED"
+          ? error.message
+          : "Employee basket assignment is unavailable right now.",
+        error.code === "REJECTED" ? "COMPANY_ACCESS_CHANGED" : "SESSION_UNAVAILABLE",
+        error.code === "REJECTED" ? 409 : 503,
+      );
+    }
     if (error instanceof MagentoKioskSessionError) {
       throw new AuthenticatedKioskSessionError(
         error.message,
