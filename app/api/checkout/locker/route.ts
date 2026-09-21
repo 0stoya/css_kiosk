@@ -13,6 +13,10 @@ import {
   MagentoLockerOrderError,
   submitAuthenticatedLockerOrder,
 } from "@/lib/magento/locker-order";
+import {
+  assignCurrentKioskCartEmployee,
+  MagentoKioskEmployeeError,
+} from "@/lib/magento/kiosk-employee";
 
 export const runtime = "nodejs";
 
@@ -107,11 +111,39 @@ export async function POST(request: Request) {
 
   let checkout;
   try {
+    if (session.employee) {
+      await assignCurrentKioskCartEmployee({
+        token: session.magentoToken,
+        employeeId: session.employee.employeeId,
+      });
+    }
+
     checkout = await prepareAuthenticatedLockerCheckout({
       token: session.magentoToken,
       customer: session.customer,
     });
   } catch (error) {
+    if (error instanceof MagentoKioskEmployeeError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: `LOCKER_EMPLOYEE_${error.code}`,
+          error:
+            error.code === "REJECTED"
+              ? error.message
+              : "Employee basket assignment could not be verified right now.",
+        },
+        {
+          status:
+            error.code === "REJECTED"
+              ? 409
+              : error.code === "UNAVAILABLE"
+                ? 503
+                : 502,
+        },
+      );
+    }
+
     if (error instanceof MagentoLockerCheckoutError) return checkoutFailure(error);
 
     return NextResponse.json(
