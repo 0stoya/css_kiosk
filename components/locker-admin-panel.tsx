@@ -39,6 +39,14 @@ type LockerStatus = {
     unmaterialised: number;
   };
   positions: LockerPosition[];
+  carts: Array<{
+    id: number;
+    employeeId: number;
+    projectNumber: string;
+    lineCount: number;
+    totalQuantity: number;
+    createdAt: string;
+  }>;
   manualOpen: {
     available: false;
     reason: string;
@@ -299,6 +307,47 @@ export function LockerAdminPanel({
             </div>
 
             {openError ? <p className={styles.openError} role="alert">{openError}</p> : null}
+
+            <section className={styles.cartsSection} aria-label="Terminal ARGO carts">
+              <div className={styles.sectionHeading}>
+                <div>
+                  <p className={styles.eyebrow}>ARGO cart records</p>
+                  <h3>{status.carts.length} active cart{status.carts.length === 1 ? "" : "s"} on this terminal</h3>
+                </div>
+              </div>
+              <p className={styles.releaseIntro}>
+                These are ARGO cart IDs associated with terminal {status.terminal.id}. The current API does not tell us which occupied cell belongs to which cart.
+              </p>
+              {status.carts.length ? (
+                <div className={styles.cartList}>
+                  {status.carts.map((cart) => (
+                    <button
+                      type="button"
+                      className={styles.cartCard}
+                      key={cart.id}
+                      onClick={() => setReleaseCartId(String(cart.id))}
+                      title={`Use cart ${cart.id} for Open locker`}
+                    >
+                      <span>
+                        <strong>Cart {cart.id}</strong>
+                        <small>{cart.projectNumber || "No project / OGL reference"}</small>
+                      </span>
+                      <span>
+                        <strong>{cart.totalQuantity}</strong>
+                        <small>{cart.lineCount} line{cart.lineCount === 1 ? "" : "s"}</small>
+                      </span>
+                      <span>
+                        <strong>Employee {cart.employeeId}</strong>
+                        <small>ARGO owner</small>
+                      </span>
+                      <span className={styles.useCart}>Use cart</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.emptyState}>ARGO returned no active cart records for this terminal.</div>
+              )}
+            </section>
 
             <section className={styles.releaseSection} aria-label="Open locker">
               <div className={styles.sectionHeading}>
