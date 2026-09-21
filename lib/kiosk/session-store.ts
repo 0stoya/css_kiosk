@@ -65,6 +65,7 @@ export function createKioskSession(input: {
   deviceId: string;
   magentoToken: string;
   customer: VerifiedKioskCustomer;
+  employee?: KioskSessionEmployeeContext | null;
   rfidBadge?: string | null;
 }) {
   cleanupExpiredSessions();
@@ -76,7 +77,7 @@ export function createKioskSession(input: {
     deviceId: input.deviceId,
     magentoToken: input.magentoToken,
     customer: input.customer,
-    employee: null,
+    employee: input.employee ?? null,
     rfidBadge:
       typeof input.rfidBadge === "string" && /^\d{1,20}$/.test(input.rfidBadge)
         ? input.rfidBadge
