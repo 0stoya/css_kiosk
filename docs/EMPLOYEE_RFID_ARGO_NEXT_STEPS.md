@@ -1433,3 +1433,49 @@ When a numeric RFID is used for kiosk login, css_kiosk keeps the badge only in t
 The Open locker form therefore needs only the known loaded `cart_id`.
 
 Per-cell Open buttons remain disabled because ARGO does not expose arbitrary cell opening.
+
+
+### 21 Sep 2026 — normal Employee RFID sign-in + automatic cart assignment
+
+Opened css_kiosk PR #37:
+
+```text
+Attach canonical Employee on normal RFID sign-in
+```
+
+Normal registered RFID login now additionally resolves the dedicated Employee credential/provider mapping.
+
+When linked:
+
+```text
+RFID
+→ Magento customer/company
+→ canonical Employee
+→ ARGO employee
+→ kiosk session
+```
+
+Fail-closed checks:
+
+- revoked Employee RFID link;
+- Employee company mismatch;
+- missing ARGO provider link;
+- Fluid rejection of whole-cart Employee assignment.
+
+Before the kiosk session is committed, css_kiosk calls the existing `cssAssignCartEmployee` against the current Magento cart. If Fluid rejects the Employee, the temporary Magento session is revoked and kiosk login fails.
+
+After ordinary and grouped basket additions, css_kiosk assigns the whole cart to the session Employee again.
+
+Before locker checkout preparation, the cart is assigned/revalidated once more.
+
+Enforcement checkpoints:
+
+```text
+RFID login
+→ basket additions
+→ checkout
+```
+
+The browser never supplies an Employee ID.
+
+Dependency note: css_kiosk #33 is still open in GitHub and should be merged before production relies on new Employee enrollment records.
