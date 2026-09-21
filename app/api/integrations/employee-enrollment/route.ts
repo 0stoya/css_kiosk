@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 
 function sharedSecret() {
   const secret = process.env.KIOSK_EMPLOYEE_ENROLLMENT_SHARED_SECRET?.trim();
-  if (!secret) {
-    throw new Error("KIOSK_EMPLOYEE_ENROLLMENT_SHARED_SECRET is not configured.");
+  if (!secret || secret.length < 32) {
+    throw new Error("KIOSK_EMPLOYEE_ENROLLMENT_SHARED_SECRET is not configured with a strong value.");
   }
   return secret;
 }
