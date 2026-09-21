@@ -87,7 +87,8 @@ export async function prepareArgoOrderPreflight(input: {
   const config = getArgoOrderBridgeConfig();
   if (!config.enabled) return null;
 
-  if (!getArgoConfig().writesEnabled) {
+  const argoConfig = getArgoConfig();
+  if (!argoConfig.writesEnabled) {
     throw new ArgoApiError(
       "NEXT ARGO order bridge is enabled but ARGO writes are disabled.",
       "WRITE_DISABLED",
@@ -111,6 +112,13 @@ export async function prepareArgoOrderPreflight(input: {
   if (employee.active === false) {
     throw new ArgoApiError(
       "The linked NEXT ARGO employee is inactive.",
+      "CORRELATION_MISMATCH",
+      409,
+    );
+  }
+  if (employee.plantId !== argoConfig.plantId) {
+    throw new ArgoApiError(
+      "The linked NEXT ARGO employee belongs to the wrong plant.",
       "CORRELATION_MISMATCH",
       409,
     );
