@@ -9,6 +9,10 @@ import {
   resolveNfcCredential,
 } from "@/lib/kiosk/credential-store";
 import {
+  EmployeeCredentialStoreError,
+  resolveEmployeeCredential,
+} from "@/lib/kiosk/employee-credential-store";
+import {
   KioskDeviceRequestError,
   readTrustedJsonRequest,
 } from "@/lib/kiosk/device-request";
@@ -45,9 +49,56 @@ export async function POST(request: Request) {
     const stored = resolveNfcCredential(credential);
 
     if (stored.status === "registered") {
+      const employeeCredential = resolveEmployeeCredential(credential);
+      let employee = null;
+
+      if (employeeCredential.status === "revoked") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "EMPLOYEE_LINK_REVOKED",
+            error: "This Employee RFID link has been revoked. Please ask a member of staff for help.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (employeeCredential.status === "linked") {
+        const companyId = stored.customer.company?.companyId ?? null;
+        if (companyId !== employeeCredential.link.companyId) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "EMPLOYEE_COMPANY_MISMATCH",
+              error: "This RFID Employee link does not match the active company account.",
+            },
+            { status: 409 },
+          );
+        }
+
+        if (!employeeCredential.provider) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "EMPLOYEE_ARGO_LINK_REQUIRED",
+              error: "This Employee RFID link is not ready for locker ordering yet.",
+            },
+            { status: 409 },
+          );
+        }
+
+        employee = {
+          companyId: employeeCredential.link.companyId,
+          employeeId: employeeCredential.link.employeeId,
+          argoEmployeeId: employeeCredential.provider.providerEmployeeId,
+          argoPlantId: employeeCredential.provider.plantId,
+        };
+      }
+
       const authenticated = await establishAuthenticatedKioskSession({
         deviceId: device.deviceId,
         linkedCustomer: stored.customer,
+        employee,
         rfidBadge:
           credential.type === "uid" && /^\d{1,20}$/.test(credential.value)
             ? credential.value
@@ -73,6 +124,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, status: "unregistered" });
   } catch (error) {
+    if (error instanceof EmployeeCredentialStoreError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+
     if (error instanceof NfcCredentialStoreError) {
       return NextResponse.json(
         { ok: false, code: error.code, error: error.message },
