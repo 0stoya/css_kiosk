@@ -63,6 +63,27 @@ type ResolveCardResponse = CustomerResponse & {
   status?: "registered" | "unregistered" | "revoked";
 };
 
+type EmployeeEnrollmentSummary = {
+  companyId: number;
+  employeeId: number;
+  employeeCode: string | null;
+  firstName: string;
+  lastName: string;
+  expiresAt: string;
+};
+
+type EmployeeEnrollmentResponse = {
+  ok?: boolean;
+  code?: string;
+  error?: string;
+  enrollment?: EmployeeEnrollmentSummary;
+  employee?: {
+    employeeId: number;
+    argoEmployeeId: number;
+    argoEmployeeCreated: boolean;
+  };
+};
+
 type DeviceTrustState = "enrolling" | "trusted" | "error";
 
 type NativeRfidDetail = {
@@ -88,9 +109,13 @@ export function KioskAuthDemo() {
   const [formError, setFormError] = useState<string | null>(null);
   const [verifiedCustomer, setVerifiedCustomer] = useState<VerifiedKioskCustomer | null>(null);
   const [linkingCard, setLinkingCard] = useState(false);
+  const [employeeEnrollmentCode, setEmployeeEnrollmentCode] = useState("");
+  const [employeeEnrollment, setEmployeeEnrollment] = useState<EmployeeEnrollmentSummary | null>(null);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
   const stateRef = useRef<KioskAuthState>("idle");
+  const employeeEnrollmentRef = useRef<EmployeeEnrollmentSummary | null>(null);
+  const employeeEnrollmentCodeRef = useRef("");
   const showPrototypeTools = process.env.NODE_ENV !== "production";
 
   useEffect(() => {
@@ -113,6 +138,10 @@ export function KioskAuthDemo() {
     setFormError(null);
     setVerifiedCustomer(null);
     setLinkingCard(false);
+    setEmployeeEnrollmentCode("");
+    setEmployeeEnrollment(null);
+    employeeEnrollmentCodeRef.current = "";
+    employeeEnrollmentRef.current = null;
   }, []);
 
   const signOut = useCallback(() => {
@@ -129,6 +158,58 @@ export function KioskAuthDemo() {
     setMessage(sessionMessage);
     setState("error");
   }, []);
+
+  const completeActiveEmployeeEnrollment = useCallback(
+    async (credential: NfcCredential, customer: VerifiedKioskCustomer) => {
+      const enrollment = employeeEnrollmentRef.current;
+      const code = employeeEnrollmentCodeRef.current;
+      if (!enrollment || !code) {
+        setMessage("Employee enrollment is no longer active. Start again from the card screen.");
+        setState("error");
+        return false;
+      }
+
+      setMessage(null);
+      setFormError(null);
+      setState("reading");
+      stateRef.current = "reading";
+
+      try {
+        const response = await signedFetch("/api/employee-enrollment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "complete",
+            code,
+            credential,
+          }),
+        });
+        const body = (await response.json()) as EmployeeEnrollmentResponse;
+
+        if (!response.ok || !body.ok || !body.employee) {
+          setMessage(body.error || "Employee RFID enrollment could not be completed.");
+          setState("error");
+          return false;
+        }
+
+        setVerifiedCustomer(customer);
+        setEmail(customer.email);
+        setMessage(
+          body.employee.argoEmployeeCreated
+            ? "RFID linked and the NEXT ARGO employee was created."
+            : "RFID linked to the existing NEXT ARGO employee.",
+        );
+        setState("employee-enrollment-complete");
+        stateRef.current = "employee-enrollment-complete";
+        return true;
+      } catch {
+        setMessage("Employee RFID enrollment is unavailable right now.");
+        setState("error");
+        return false;
+      }
+    },
+    [signedFetch],
+  );
 
   useEffect(() => {
     if (!showPrototypeTools) return;
@@ -168,6 +249,12 @@ export function KioskAuthDemo() {
         if (body.status === "registered" && body.customer) {
           setVerifiedCustomer(body.customer);
           setEmail(body.customer.email);
+
+          if (employeeEnrollmentRef.current) {
+            await completeActiveEmployeeEnrollment(credential, body.customer);
+            return;
+          }
+
           setState("welcome");
           return;
         }
@@ -194,7 +281,12 @@ export function KioskAuthDemo() {
     }
 
     function handleNativeRfidCard(event: Event) {
-      if (stateRef.current !== "idle") return;
+      if (
+        stateRef.current !== "idle" &&
+        stateRef.current !== "employee-enrollment-ready"
+      ) {
+        return;
+      }
 
       const detail = (event as CustomEvent<NativeRfidDetail>).detail;
       const value = typeof detail?.value === "string" ? detail.value.trim() : "";
@@ -216,6 +308,12 @@ export function KioskAuthDemo() {
     window.addEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
 
     const removeCredentialHandler = simulator.onCredential((credential) => {
+      if (
+        stateRef.current !== "idle" &&
+        stateRef.current !== "employee-enrollment-ready"
+      ) {
+        return;
+      }
       void resolveCredential(credential);
     });
 
@@ -236,7 +334,11 @@ export function KioskAuthDemo() {
 
         const queuedCredential = pendingNativeCredential;
         pendingNativeCredential = null;
-        if (queuedCredential && stateRef.current === "idle") {
+        if (
+          queuedCredential &&
+          (stateRef.current === "idle" ||
+            stateRef.current === "employee-enrollment-ready")
+        ) {
           void resolveCredential(queuedCredential);
         }
 
@@ -262,7 +364,7 @@ export function KioskAuthDemo() {
       simulatorRef.current = null;
       deviceSignerRef.current = null;
     };
-  }, [showPrototypeTools, signedFetch]);
+  }, [completeActiveEmployeeEnrollment, showPrototypeTools, signedFetch]);
 
   function reset() {
     const signer = deviceSignerRef.current;
@@ -270,6 +372,44 @@ export function KioskAuthDemo() {
       void signer.signedFetch("/api/nfc/link", { method: "DELETE" }).catch(() => undefined);
     }
     clearLocalState("idle");
+  }
+
+  async function submitEmployeeEnrollmentCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (deviceTrust !== "trusted") {
+      setMessage("This kiosk is not trusted for Employee enrollment.");
+      setState("error");
+      return;
+    }
+
+    const code = employeeEnrollmentCode.trim().toUpperCase().replace(/[\s-]+/g, "");
+    if (!code) return;
+
+    setMessage(null);
+    setFormError(null);
+
+    try {
+      const response = await signedFetch("/api/employee-enrollment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "lookup", code }),
+      });
+      const body = (await response.json()) as EmployeeEnrollmentResponse;
+
+      if (!response.ok || !body.ok || !body.enrollment) {
+        setFormError(body.error || "Employee enrollment code could not be found.");
+        return;
+      }
+
+      employeeEnrollmentCodeRef.current = code;
+      employeeEnrollmentRef.current = body.enrollment;
+      setEmployeeEnrollmentCode(code);
+      setEmployeeEnrollment(body.enrollment);
+      setState("employee-enrollment-ready");
+      stateRef.current = "employee-enrollment-ready";
+    } catch {
+      setFormError("Employee enrollment is unavailable right now.");
+    }
   }
 
   function presentSimulatedCard() {
@@ -390,6 +530,12 @@ export function KioskAuthDemo() {
 
       setVerifiedCustomer(body.customer);
       setEmail(body.customer.email);
+
+      if (employeeEnrollmentRef.current && activeCredential) {
+        await completeActiveEmployeeEnrollment(activeCredential, body.customer);
+        return;
+      }
+
       setState("welcome");
     } catch {
       setMessage("Card linking is unavailable right now. Please try again.");
@@ -487,7 +633,8 @@ export function KioskAuthDemo() {
     };
   }, [signOut, state, verifiedCustomer]);
 
-  const waiting = state === "idle" || state === "reading";
+  const enrollmentReading = state === "reading" && Boolean(employeeEnrollment);
+  const waiting = state === "idle" || (state === "reading" && !employeeEnrollment);
   const displayFirstName = verifiedCustomer?.firstName || mockCustomer.firstName;
   const displayLastName = verifiedCustomer?.lastName || mockCustomer.lastName;
   const displayEmail = verifiedCustomer?.email || email || mockCustomer.email;
@@ -530,15 +677,93 @@ export function KioskAuthDemo() {
             <p className="privacy-note">
               The kiosk automatically signs out after {KIOSK_INACTIVITY_TIMEOUT_SECONDS} seconds of inactivity.
             </p>
+            {state === "idle" ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setMessage(null);
+                  setFormError(null);
+                  setState("employee-enrollment-code");
+                }}
+              >
+                Employee RFID enrollment
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        {state === "employee-enrollment-code" ? (
+          <section className="auth-panel auth-panel-centred">
+            <button className="text-button" type="button" onClick={reset}>← Back</button>
+            <p className="eyebrow">Employee RFID enrollment</p>
+            <h1>Enter the enrollment code</h1>
+            <p className="lead">
+              Start enrollment from the Employee record in CSS Admin, then enter the short-lived code shown there.
+            </p>
+            <form className="link-form" onSubmit={submitEmployeeEnrollmentCode}>
+              <label>
+                <span>Enrollment code</span>
+                <input
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  maxLength={10}
+                  value={employeeEnrollmentCode}
+                  onChange={(event) => setEmployeeEnrollmentCode(event.target.value.toUpperCase())}
+                  placeholder="ABCD2345"
+                  required
+                />
+              </label>
+              {formError ? <p className="form-error" role="alert">{formError}</p> : null}
+              <button className="primary-button" type="submit">Continue</button>
+            </form>
+          </section>
+        ) : null}
+
+        {(state === "employee-enrollment-ready" || enrollmentReading) && employeeEnrollment ? (
+          <section className="auth-panel auth-panel-centred" aria-live="polite">
+            <button className="text-button" type="button" onClick={reset}>← Cancel</button>
+            <p className="eyebrow">Employee RFID enrollment</p>
+            <h1>
+              {enrollmentReading
+                ? "Checking this RFID…"
+                : `Tap ${employeeEnrollment.firstName} ${employeeEnrollment.lastName}'s RFID`}
+            </h1>
+            <div className="customer-card compact">
+              <strong>{employeeEnrollment.firstName} {employeeEnrollment.lastName}</strong>
+              <span>
+                {employeeEnrollment.employeeCode || `Employee #${employeeEnrollment.employeeId}`}
+              </span>
+            </div>
+            <div className={`nfc-target${enrollmentReading ? " is-reading" : ""}`} role="status">
+              <span className="nfc-icon"><ContactlessIcon /></span>
+              <span className="nfc-label">
+                {enrollmentReading ? "Card detected" : "Hold the Employee RFID near the reader"}
+              </span>
+            </div>
+            <p className="security-note">
+              The raw RFID is used transiently for ARGO reconciliation. CSS stores only its credential hash and stable Employee IDs.
+            </p>
           </section>
         ) : null}
 
         {state === "unregistered" || state === "linking" ? (
           <section className="auth-panel">
             <button className="text-button" type="button" onClick={reset}>← Back</button>
-            <p className="eyebrow">Card not registered</p>
-            <h1>Sign in once to link your card</h1>
-            <p className="lead">Enter the email address and password you already use for your CSS account.</p>
+            <p className="eyebrow">
+              {employeeEnrollment ? "Employee RFID enrollment" : "Card not registered"}
+            </p>
+            <h1>
+              {employeeEnrollment
+                ? "Sign in once to link this Employee RFID"
+                : "Sign in once to link your card"}
+            </h1>
+            <p className="lead">
+              {employeeEnrollment
+                ? "Use this Employee's own CSS Magento account. Their password is only used to verify the account."
+                : "Enter the email address and password you already use for your CSS account."}
+            </p>
 
             <form className="link-form" onSubmit={submitLink}>
               <label>
@@ -596,11 +821,33 @@ export function KioskAuthDemo() {
               {displayCompanyReference ? <span>Account {displayCompanyReference}</span> : null}
               {companyCount > 1 ? <span>{companyCount} company accounts available</span> : null}
             </div>
-            <p className="lead">Future taps of this card will recognise this customer account on an authorised CSS kiosk.</p>
+            <p className="lead">
+              {employeeEnrollment
+                ? "This verifies the Employee's own Magento account before the RFID is linked to their canonical Employee and ARGO identity."
+                : "Future taps of this card will recognise this customer account on an authorised CSS kiosk."}
+            </p>
             <button className="primary-button" type="button" onClick={() => void confirmLink()} disabled={linkingCard}>
               {linkingCard ? "Linking card…" : "Link this card to my account"}
             </button>
             <button className="secondary-button" type="button" onClick={reset} disabled={linkingCard}>Cancel</button>
+          </section>
+        ) : null}
+
+        {state === "employee-enrollment-complete" && employeeEnrollment ? (
+          <section className="auth-panel auth-panel-centred">
+            <div className="success-badge">✓</div>
+            <p className="eyebrow">Employee RFID enrolled</p>
+            <h1>{employeeEnrollment.firstName} {employeeEnrollment.lastName}</h1>
+            <p className="lead">
+              This RFID now resolves the Employee's Magento account, canonical CSS Employee and NEXT ARGO employee.
+            </p>
+            <div className="customer-card compact">
+              <strong>{employeeEnrollment.employeeCode || `Employee #${employeeEnrollment.employeeId}`}</strong>
+              {message ? <span>{message}</span> : null}
+            </div>
+            <button className="primary-button" type="button" onClick={signOut}>
+              Finish & return to card screen
+            </button>
           </section>
         ) : null}
 
