@@ -1163,3 +1163,22 @@ exact active Fluid Employee
 The server-side kiosk session can now carry Employee context separately from the Magento commerce actor.
 
 No enrollment HTTP route/browser Employee selector is exposed yet. The next slice remains the short-lived authorised enrollment handshake followed by Employee-card authentication and automatic cart assignment.
+
+
+### 21 Sep 2026 — Fluid scope correction
+
+Clarified the earlier "no Fluid changes" statement:
+
+- NEXT ARGO integration itself requires no Fluid changes.
+- The only Fluid change currently needed for end-to-end Employee ordering is to let the existing bound kiosk session call `cssAssignCartEmployee`, so Fluid can keep enforcing canonical Employee attribution and purchase controls.
+
+Fluid #100 was reduced accordingly.
+
+The kiosk-bound session does **not** get:
+
+```text
+css_company_employee
+css_company_employees
+```
+
+Employee lookup/browsing remains outside the kiosk-bound customer session. The future authorised enrollment flow will provide the exact canonical Employee identity to css_kiosk, which then stores only the trusted Employee mapping and uses `cssAssignCartEmployee` for the cart.
