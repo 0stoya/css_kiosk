@@ -4,10 +4,18 @@ import { revokeMagentoCustomerToken } from "@/lib/magento/revoke-customer-token"
 
 const SESSION_TTL_MS = 15 * 60 * 1000;
 
+export type KioskSessionEmployeeContext = {
+  companyId: number;
+  employeeId: number;
+  argoEmployeeId: number;
+  argoPlantId: number;
+};
+
 export type KioskSession = {
   deviceId: string;
   magentoToken: string;
   customer: VerifiedKioskCustomer;
+  employee: KioskSessionEmployeeContext | null;
   createdAt: string;
   expiresAt: string;
 };
@@ -64,6 +72,7 @@ export function createKioskSession(input: {
     deviceId: input.deviceId,
     magentoToken: input.magentoToken,
     customer: input.customer,
+    employee: null,
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
@@ -97,5 +106,54 @@ export function destroyKioskSession(sessionId: string, deviceId: string) {
   if (timer) clearTimeout(timer);
   timers.delete(key);
 
+  return session;
+}
+
+
+function positiveInteger(value: number, label: string) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a safe positive integer.`);
+  }
+  return value;
+}
+
+export function setKioskSessionEmployee(input: {
+  sessionId: string;
+  deviceId: string;
+  employee: KioskSessionEmployeeContext;
+}) {
+  const session = getKioskSession(input.sessionId, input.deviceId);
+  if (!session) {
+    throw new Error("Kiosk session has expired.");
+  }
+
+  const companyId = positiveInteger(input.employee.companyId, "company_id");
+  const employeeId = positiveInteger(input.employee.employeeId, "employee_id");
+  const argoEmployeeId = positiveInteger(
+    input.employee.argoEmployeeId,
+    "argo_employee_id",
+  );
+  const argoPlantId = positiveInteger(input.employee.argoPlantId, "argo_plant_id");
+
+  if (session.customer.company?.companyId !== companyId) {
+    throw new Error(
+      "Employee context does not match the kiosk session company.",
+    );
+  }
+
+  session.employee = {
+    companyId,
+    employeeId,
+    argoEmployeeId,
+    argoPlantId,
+  };
+
+  return session;
+}
+
+export function clearKioskSessionEmployee(sessionId: string, deviceId: string) {
+  const session = getKioskSession(sessionId, deviceId);
+  if (!session) return null;
+  session.employee = null;
   return session;
 }
