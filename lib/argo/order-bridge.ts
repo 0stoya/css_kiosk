@@ -1,7 +1,11 @@
 import { ArgoApiError } from "@/lib/argo/client";
 import { getArgoConfig } from "@/lib/argo/config";
 import { createArgoCart } from "@/lib/argo/cart-writes";
-import { recordArgoCartCreated } from "@/lib/argo/cart-correlation-store";
+import {
+  getArgoCartCorrelationByProjectNumber,
+  recordArgoCartCreated,
+} from "@/lib/argo/cart-correlation-store";
+import { listArgoCarts } from "@/lib/argo/carts";
 import { getArgoEmployee } from "@/lib/argo/employees";
 import {
   argoExpectedArrivalDate,
@@ -182,6 +186,83 @@ export async function createArgoCartForFulfilment(input: {
     return {
       argoCartId: fulfilment.argoCartId,
       providerState: "created",
+    };
+  }
+
+  const localCorrelation = getArgoCartCorrelationByProjectNumber(
+    input.oglOrderNumber,
+  );
+  if (localCorrelation) {
+    if (
+      localCorrelation.magentoOrderNumber !== input.magentoOrderNumber ||
+      localCorrelation.terminalId !== fulfilment.terminalId ||
+      localCorrelation.argoEmployeeId !== fulfilment.argoEmployeeId
+    ) {
+      throw new ArgoApiError(
+        "The existing NEXT ARGO order correlation does not match this fulfilment.",
+        "CORRELATION_MISMATCH",
+        409,
+      );
+    }
+
+    markArgoOrderFulfilmentCreated({
+      magentoOrderNumber: input.magentoOrderNumber,
+      oglOrderNumber: input.oglOrderNumber,
+      argoCartId: localCorrelation.argoCartId,
+    });
+    return {
+      argoCartId: localCorrelation.argoCartId,
+      providerState: localCorrelation.providerState,
+    };
+  }
+
+  const providerPage = await listArgoCarts({
+    terminalId: fulfilment.terminalId,
+    q: input.oglOrderNumber,
+    status: "all",
+    perPage: 500,
+  });
+  const providerMatches = providerPage.data.filter(
+    (cart) => cart.projectNumber === input.oglOrderNumber,
+  );
+
+  if (providerMatches.length > 1) {
+    throw new ArgoApiError(
+      "NEXT ARGO returned more than one cart for this OGL order reference.",
+      "CORRELATION_MISMATCH",
+      409,
+    );
+  }
+
+  if (providerMatches.length === 1) {
+    const existing = providerMatches[0];
+    if (
+      existing.terminalId !== fulfilment.terminalId ||
+      existing.employeeId !== fulfilment.argoEmployeeId
+    ) {
+      throw new ArgoApiError(
+        "The existing NEXT ARGO cart belongs to a different employee or terminal.",
+        "CORRELATION_MISMATCH",
+        409,
+      );
+    }
+
+    recordArgoCartCreated({
+      projectNumber: input.oglOrderNumber,
+      magentoOrderNumber: input.magentoOrderNumber,
+      argoCartId: existing.id,
+      terminalId: existing.terminalId,
+      argoEmployeeId: existing.employeeId,
+      providerState: "existing",
+    });
+    markArgoOrderFulfilmentCreated({
+      magentoOrderNumber: input.magentoOrderNumber,
+      oglOrderNumber: input.oglOrderNumber,
+      argoCartId: existing.id,
+    });
+    return {
+      argoCartId: existing.id,
+      providerState: "existing",
     };
   }
 
