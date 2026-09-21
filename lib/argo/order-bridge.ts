@@ -1,4 +1,5 @@
 import { ArgoApiError } from "@/lib/argo/client";
+import { getArgoConfig } from "@/lib/argo/config";
 import { createArgoCart } from "@/lib/argo/cart-writes";
 import { recordArgoCartCreated } from "@/lib/argo/cart-correlation-store";
 import { getArgoEmployee } from "@/lib/argo/employees";
@@ -85,6 +86,14 @@ export async function prepareArgoOrderPreflight(input: {
 }): Promise<ArgoOrderPreflight | null> {
   const config = getArgoOrderBridgeConfig();
   if (!config.enabled) return null;
+
+  if (!getArgoConfig().writesEnabled) {
+    throw new ArgoApiError(
+      "NEXT ARGO order bridge is enabled but ARGO writes are disabled.",
+      "WRITE_DISABLED",
+      409,
+    );
+  }
 
   if (!Number.isSafeInteger(input.argoEmployeeId) || input.argoEmployeeId <= 0) {
     throw new ArgoApiError(
