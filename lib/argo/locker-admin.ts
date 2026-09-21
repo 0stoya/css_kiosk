@@ -1,3 +1,4 @@
+import { listArgoCarts } from "@/lib/argo/carts";
 import { getArgoProduct } from "@/lib/argo/products";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
 import type { ArgoProduct } from "@/lib/argo/types";
@@ -57,6 +58,14 @@ export type KioskLockerAdminStatus = {
     unmaterialised: number;
   };
   positions: KioskLockerAdminPosition[];
+  carts: Array<{
+    id: number;
+    employeeId: number;
+    projectNumber: string;
+    lineCount: number;
+    totalQuantity: number;
+    createdAt: string;
+  }>;
   manualOpen: {
     available: false;
     reason: string;
@@ -73,9 +82,16 @@ export async function getKioskLockerAdminStatus(): Promise<KioskLockerAdminStatu
     ),
   ];
 
-  const productRows = await Promise.all(
-    productIds.map(async (productId) => [productId, await cachedArgoProduct(productId)] as const),
-  );
+  const [cartPage, productRows] = await Promise.all([
+    listArgoCarts({
+      terminalId: terminal.id,
+      status: "active",
+      perPage: 500,
+    }),
+    Promise.all(
+      productIds.map(async (productId) => [productId, await cachedArgoProduct(productId)] as const),
+    ),
+  ]);
   const products = new Map(productRows);
 
   const positions: KioskLockerAdminPosition[] = [
@@ -126,6 +142,17 @@ export async function getKioskLockerAdminStatus(): Promise<KioskLockerAdminStatu
     },
     summary: terminal.slotSummary,
     positions,
+    carts: cartPage.data
+      .filter((cart) => cart.terminalId === terminal.id)
+      .map((cart) => ({
+        id: cart.id,
+        employeeId: cart.employeeId,
+        projectNumber: cart.projectNumber,
+        lineCount: cart.lineCount,
+        totalQuantity: cart.totalQuantity,
+        createdAt: cart.createdAt,
+      }))
+      .sort((left, right) => right.id - left.id),
     manualOpen: {
       available: false,
       reason: "Manual locker opening is waiting for the supported NEXT ARGO API contract.",
