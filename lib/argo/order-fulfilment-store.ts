@@ -269,6 +269,16 @@ export function recordArgoOrderFulfilment(input: {
       credit_order_number = excluded.credit_order_number,
       magento_order_number = excluded.magento_order_number,
       ogl_order_number = COALESCE(excluded.ogl_order_number, ogl_order_number),
+      status = CASE
+        WHEN argo_order_fulfilments_v2.status = 'CREATED'
+          THEN argo_order_fulfilments_v2.status
+        ELSE excluded.status
+      END,
+      last_error = CASE
+        WHEN argo_order_fulfilments_v2.status = 'CREATED'
+          THEN argo_order_fulfilments_v2.last_error
+        ELSE NULL
+      END,
       updated_at = excluded.updated_at
   `).run(
     fulfilmentKey,
