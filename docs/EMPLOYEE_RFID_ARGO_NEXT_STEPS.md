@@ -610,3 +610,203 @@ NEXT_PUBLIC_KIOSK_INACTIVITY_TIMEOUT_SECONDS=90
 ```
 
 The welcome screen no longer uses the previous hard-coded five-second delay. While authenticated, real pointer/touch, keyboard and wheel activity resets the inactivity timer. On timeout the kiosk uses the existing secure sign-out path and returns to the card screen. The existing 15-minute server-session TTL remains an independent upper bound.
+
+
+### 21 Sep 2026 — Lanzi flow confirmation
+
+Lanzi confirmed the intended integration boundary and physical safety model.
+
+#### Confirmed ownership boundary
+
+```text
+CSS / kiosk
+  → owns user permissions and privileges
+  → keeps ARGO employee list in sync
+  → creates ARGO cart records for kiosk-driven orders
+  → later requests withdrawal for a named badge
+
+Loader at machine
+  → physically fills the locker
+  → chooses the compartment
+  → always owns the physical loading step
+
+ARGO machine
+  → owns every door
+  → decides whether opening is safe
+  → shows local confirmation
+  → opens only after confirmation
+  → reports the resulting state
+```
+
+There is no direct API-driven compartment assignment and no API operation that should be treated as an unconditional door-open command.
+
+#### Flow B — kiosk-driven cart
+
+Confirmed intended sequence:
+
+```text
+CSS creates cart
+  → create_cart
+  → project_number carries our order reference
+  → returns cart_id
+
+CSS adds lines
+  → upsert_cart_line
+
+Loader physically loads cart
+  → chooses compartment at machine
+  → cart becomes collectable only after this step
+
+CSS requests collection
+  → request_cart_withdrawal(
+       terminal_id,
+       cart_id,
+       user_badge
+     )
+  → ARGO machine shows local confirmation
+  → get_withdrawal_status(request_key)
+```
+
+A cart record existing in ARGO does not mean it is physically loaded or ready to collect.
+
+#### Door-opening requirement clarified
+
+Our previous "manager opens arbitrary cell" concept does not match the ARGO safety model.
+
+The supported physical action is cart withdrawal:
+
+```text
+known loaded cart
+→ authorised user/admin requests withdrawal
+→ machine decides which physical compartment(s) belong to the cart
+→ machine asks locally for confirmation
+→ door(s) open only after confirmation
+```
+
+The manager/admin demo should therefore evolve toward:
+
+```text
+admin login
+→ live locker status
+→ select a known loaded cart
+→ Release cart
+→ ARGO local confirmation
+→ physical hand-over
+```
+
+rather than "select arbitrary cell → open door".
+
+Keep the current arbitrary-cell Open action disabled.
+
+#### Machine-session behaviour
+
+A withdrawal request can be refused before confirmation when:
+
+- another user currently has an active machine session; or
+- the active machine session belongs to somebody other than the requesting user.
+
+When accepted, the machine shows:
+
+- requesting user;
+- number of doors that will open;
+- confirmation timer.
+
+If nobody confirms before timeout, nothing opens and the request is reported as cancelled/refused.
+
+Treat withdrawal as an asynchronous request, not a direct command.
+
+#### Employee synchronisation
+
+Lanzi recommends CSS keeps ARGO employees aligned with kiosk employees.
+
+Confirmed employee pattern:
+
+```text
+badge first seen
+→ list_employees(badge)
+  ├─ one match → persist argo_employee_id
+  └─ no match  → create_employee
+```
+
+Badge requirements:
+
+- digits only;
+- maximum 20 digits;
+- unique within plant;
+- preserve presented digits on the CSS side even if ARGO internally stores numerically;
+- create_employee creates a badge holder only, not a password/login account.
+
+Loader users require the plant-specific loader `profile_id`. Ask Lanzi for the Chelmsford loader profile ID before automatically provisioning loader accounts.
+
+`update_employee` is not yet available; Lanzi intends to add it.
+
+#### Webhook opportunity
+
+Lanzi can add callbacks for two physical events:
+
+1. cart loaded / compartment door closed after loading;
+2. withdrawal completed / door closed after collection.
+
+This is preferable to inferring readiness from cart existence and can reduce withdrawal polling.
+
+Proposed CSS webhook contract should be designed before giving Lanzi an endpoint.
+
+At minimum persist events idempotently against:
+
+```text
+argo_cart_id
+project_number / OGL order
+event_type
+provider_event_id or idempotency key
+terminal_id
+occurred_at
+received_at
+raw provider status/reference
+```
+
+Recommended events:
+
+```text
+ARGO_CART_LOADED
+ARGO_WITHDRAWAL_COMPLETED
+```
+
+The callback endpoint must have provider authentication, replay/idempotency protection and must never trust a browser/device credential.
+
+#### Important create_cart contract contradiction to clarify
+
+Lanzi's "How a locker cart works" section says:
+
+```text
+create_cart takes no employee
+API-created carts use one integration identity
+request_cart_withdrawal supplies the collecting badge separately
+```
+
+but the later "Keeping your people in step" section says:
+
+```text
+create_cart user_badge names the employee the cart is for
+unknown badge → badge_unknown
+```
+
+These statements conflict.
+
+Before implementing production `create_cart`, confirm which is current:
+
+A. `create_cart` now accepts `user_badge` and attributes ownership; or  
+B. `create_cart` still has no employee owner and only `request_cart_withdrawal` takes a badge.
+
+If A is the newly updated contract, use it and persist both `argo_employee_id` and `cart_id`. If B remains current, keep CSS as the order-owner authority and treat the collecting badge separately.
+
+#### Items to confirm on the Lanzi call
+
+- exact current `create_cart` payload and response;
+- whether `user_badge` is now supported on `create_cart`;
+- exact `upsert_cart_line` payload / upsert identity / delete semantics;
+- full `get_withdrawal_status` state enumeration;
+- webhook event payloads;
+- webhook authentication/signing;
+- webhook retry/idempotency behaviour;
+- Chelmsford loader `profile_id`;
+- planned `update_employee` fields and semantics.
