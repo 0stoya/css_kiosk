@@ -7,6 +7,12 @@ type GraphQLResponse<TData> = {
   errors?: GraphQLErrorItem[];
 };
 
+type CurrentCartData = {
+  customerCart?: {
+    id?: string | null;
+  } | null;
+};
+
 type AssignEmployeeData = {
   cssAssignCartEmployee?: {
     id?: string | null;
@@ -22,6 +28,14 @@ export class MagentoKioskEmployeeError extends Error {
     this.name = "MagentoKioskEmployeeError";
   }
 }
+
+const CURRENT_CART_QUERY = /* GraphQL */ `
+  query KioskEmployeeCurrentCart {
+    customerCart {
+      id
+    }
+  }
+`;
 
 const ASSIGN_CART_EMPLOYEE_MUTATION = /* GraphQL */ `
   mutation KioskAssignCartEmployee($cartId: String!, $employeeId: Int!) {
@@ -132,4 +146,31 @@ export async function assignKioskCartEmployee(input: {
   }
 
   return { cartId: assignedCartId, employeeId };
+}
+
+
+export async function assignCurrentKioskCartEmployee(input: {
+  token: string;
+  employeeId: number;
+}) {
+  const employeeId = positiveInteger(input.employeeId, "employee_id");
+  const current = await requestMagento<CurrentCartData>({
+    token: input.token,
+    query: CURRENT_CART_QUERY,
+    variables: {},
+  });
+
+  const cartId = current.customerCart?.id?.trim() || "";
+  if (!cartId) {
+    throw new MagentoKioskEmployeeError(
+      "Magento did not return the current Employee cart.",
+      "INVALID_RESPONSE",
+    );
+  }
+
+  return assignKioskCartEmployee({
+    token: input.token,
+    cartId,
+    employeeId,
+  });
 }
