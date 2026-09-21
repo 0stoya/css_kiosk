@@ -7,9 +7,12 @@ import {
   cancelPendingNfcLink,
   confirmPendingNfcLink,
   NfcCredentialStoreError,
+  parseNfcCredential,
+  resolveNfcCredential,
 } from "@/lib/kiosk/credential-store";
 import {
   KioskDeviceRequestError,
+  readTrustedJsonRequest,
   verifyTrustedRequest,
 } from "@/lib/kiosk/device-request";
 import {
@@ -41,10 +44,21 @@ function deviceFailure(error: unknown) {
 
 export async function POST(request: Request) {
   let device;
+  let payload: { credential?: unknown };
   try {
-    device = await verifyTrustedRequest(request);
+    const trusted = await readTrustedJsonRequest<{ credential?: unknown }>(request);
+    device = trusted.device;
+    payload = trusted.payload;
   } catch (error) {
     return deviceFailure(error);
+  }
+
+  const credential = parseNfcCredential(payload.credential);
+  if (!credential) {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_CREDENTIAL", error: "Tap the RFID again before linking it." },
+      { status: 400 },
+    );
   }
 
   const proof = await getPendingLinkProof();
@@ -59,9 +73,28 @@ export async function POST(request: Request) {
     const linkedCustomer = confirmPendingNfcLink(proof);
     await clearPendingLinkProof();
 
+    const resolved = resolveNfcCredential(credential);
+    if (
+      resolved.status !== "registered" ||
+      resolved.customer.customerId !== linkedCustomer.customerId
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "CARD_LINK_MISMATCH",
+          error: "The RFID presented for linking does not match the verified customer account.",
+        },
+        { status: 409 },
+      );
+    }
+
     const authenticated = await establishAuthenticatedKioskSession({
       deviceId: device.deviceId,
       linkedCustomer,
+      rfidBadge:
+        credential.type === "uid" && /^\d{1,20}$/.test(credential.value)
+          ? credential.value
+          : null,
     });
 
     return NextResponse.json({
