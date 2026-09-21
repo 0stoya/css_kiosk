@@ -16,6 +16,9 @@ export type KioskSession = {
   magentoToken: string;
   customer: VerifiedKioskCustomer;
   employee: KioskSessionEmployeeContext | null;
+  // Raw numeric RFID is deliberately memory-only and lives no longer than this
+  // kiosk session. It is never written to SQLite or returned to the browser.
+  rfidBadge: string | null;
   createdAt: string;
   expiresAt: string;
 };
@@ -62,6 +65,7 @@ export function createKioskSession(input: {
   deviceId: string;
   magentoToken: string;
   customer: VerifiedKioskCustomer;
+  rfidBadge?: string | null;
 }) {
   cleanupExpiredSessions();
 
@@ -73,6 +77,10 @@ export function createKioskSession(input: {
     magentoToken: input.magentoToken,
     customer: input.customer,
     employee: null,
+    rfidBadge:
+      typeof input.rfidBadge === "string" && /^\d{1,20}$/.test(input.rfidBadge)
+        ? input.rfidBadge
+        : null,
     createdAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };

@@ -48,6 +48,10 @@ export async function POST(request: Request) {
       const authenticated = await establishAuthenticatedKioskSession({
         deviceId: device.deviceId,
         linkedCustomer: stored.customer,
+        rfidBadge:
+          credential.type === "uid" && /^\d{1,20}$/.test(credential.value)
+            ? credential.value
+            : null,
       });
 
       return NextResponse.json({

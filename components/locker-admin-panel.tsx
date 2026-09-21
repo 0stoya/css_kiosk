@@ -52,9 +52,18 @@ type LockerAdminResponse = {
   capability?: {
     canViewStatus: boolean;
     canOpen: boolean;
+    canReleaseCart?: boolean;
     manualOpenAvailable: boolean;
   };
   status?: LockerStatus;
+  withdrawal?: {
+    requestKey: string;
+    phase: string;
+    status: string;
+    terminalId: number;
+    cartId: number;
+    message: string;
+  };
 };
 
 type LockerAdminPanelProps = {
@@ -97,6 +106,10 @@ export function LockerAdminPanel({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [releaseCartId, setReleaseCartId] = useState("");
+  const [releasePending, setReleasePending] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+  const [releaseResult, setReleaseResult] = useState<NonNullable<LockerAdminResponse["withdrawal"]> | null>(null);
 
   const loadStatus = useCallback(
     async () => {
@@ -144,6 +157,46 @@ export function LockerAdminPanel({
     setLoading(true);
     setError(null);
     void loadStatus();
+  }
+
+  async function requestCartRelease() {
+    const cartId = Number(releaseCartId);
+    if (!Number.isInteger(cartId) || cartId <= 0) {
+      setReleaseError("Enter a valid loaded cart ID.");
+      return;
+    }
+
+    setReleasePending(true);
+    setReleaseError(null);
+    setReleaseResult(null);
+
+    try {
+      const response = await signedFetch("/api/locker/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "withdraw",
+          cartId,
+        }),
+      });
+      const body = (await response.json()) as LockerAdminResponse;
+
+      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
+        onSessionExpired("Your kiosk session has expired. Tap your card to sign in again.");
+        return;
+      }
+
+      if (!response.ok || !body.ok || !body.withdrawal) {
+        setReleaseError(body.error || "The cart release request was rejected.");
+        return;
+      }
+
+      setReleaseResult(body.withdrawal);
+    } catch {
+      setReleaseError("The cart release request could not be sent right now.");
+    } finally {
+      setReleasePending(false);
+    }
   }
 
   async function requestOpen(position: LockerPosition) {
@@ -246,6 +299,57 @@ export function LockerAdminPanel({
             </div>
 
             {openError ? <p className={styles.openError} role="alert">{openError}</p> : null}
+
+            <section className={styles.releaseSection} aria-label="Open locker">
+              <div className={styles.sectionHeading}>
+                <div>
+                  <p className={styles.eyebrow}>Physical acceptance test</p>
+                  <h3>Open locker</h3>
+                </div>
+                <span className={capability?.canReleaseCart ? styles.liveBadge : styles.pendingBadge}>
+                  {capability?.canReleaseCart ? "Ready" : "Unavailable"}
+                </span>
+              </div>
+              <p className={styles.releaseIntro}>
+                Open the locker for a cart confirmed as physically loaded on this terminal. This uses the RFID you signed in with; ARGO still requires confirmation on the machine before any door opens.
+              </p>
+              <div className={styles.releaseForm}>
+                <label>
+                  <span>ARGO cart ID</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={releaseCartId}
+                    onChange={(event) => setReleaseCartId(event.target.value.replace(/\D+/g, ""))}
+                    placeholder="420425001"
+                    disabled={releasePending}
+                  />
+                </label>
+                <button
+                  className={styles.releaseButton}
+                  type="button"
+                  onClick={() => void requestCartRelease()}
+                  disabled={!capability?.canReleaseCart || releasePending}
+                >
+                  {releasePending ? "Requesting…" : "Open locker"}
+                </button>
+              </div>
+              <p className={styles.releaseHint}>
+                Your sign-in RFID is kept only in the current in-memory kiosk session and is sent transiently to ARGO for this request. It is not written to kiosk storage.
+              </p>
+              {releaseError ? (
+                <p className={styles.openError} role="alert">{releaseError}</p>
+              ) : null}
+              {releaseResult ? (
+                <div className={styles.releaseResult} role="status">
+                  <strong>Open request queued</strong>
+                  <span>Cart {releaseResult.cartId} · {releaseResult.phase} / {releaseResult.status}</span>
+                  <span>{releaseResult.message}</span>
+                  <code>{releaseResult.requestKey}</code>
+                  <small>Go to the ARGO machine now and confirm the request on its screen.</small>
+                </div>
+              ) : null}
+            </section>
 
             <section className={styles.positionsSection}>
               <div className={styles.sectionHeading}>

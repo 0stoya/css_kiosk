@@ -1,4 +1,4 @@
-import { configuredArgoDatabaseUuid, requestArgo } from "@/lib/argo/client";
+import { ArgoApiError, configuredArgoDatabaseUuid, requestArgo } from "@/lib/argo/client";
 import {
   dataArray,
   dataRecord,
@@ -65,4 +65,58 @@ export async function getArgoProduct(id: number): Promise<ArgoProduct> {
     parameters: { id },
   });
   return product(dataRecord(body, "get_product"), "get_product.data");
+}
+
+
+function normaliseSku(value: string | null | undefined) {
+  return value?.trim().toUpperCase() || "";
+}
+
+export async function resolveArgoProductBySku(sku: string): Promise<ArgoProduct> {
+  const requested = normaliseSku(sku);
+  if (!requested) {
+    throw new ArgoApiError(
+      "A Magento SKU is required for NEXT ARGO product matching.",
+      "INVALID_REQUEST",
+      400,
+    );
+  }
+
+  const page = await listArgoProducts({
+    q: sku.trim(),
+    status: "active",
+    perPage: 500,
+  });
+
+  const active = page.data.filter((product) => product.active !== false);
+  const customerCodeMatches = active.filter(
+    (product) => normaliseSku(product.customerCode) === requested,
+  );
+
+  if (customerCodeMatches.length > 1) {
+    throw new ArgoApiError(
+      `NEXT ARGO returned more than one active product with customer_code ${sku.trim()}.`,
+      "INVALID_RESPONSE",
+      502,
+    );
+  }
+  if (customerCodeMatches.length === 1) return customerCodeMatches[0];
+
+  const codeMatches = active.filter(
+    (product) => normaliseSku(product.code) === requested,
+  );
+  if (codeMatches.length > 1) {
+    throw new ArgoApiError(
+      `NEXT ARGO returned more than one active product with code ${sku.trim()}.`,
+      "INVALID_RESPONSE",
+      502,
+    );
+  }
+  if (codeMatches.length === 1) return codeMatches[0];
+
+  throw new ArgoApiError(
+    `No active NEXT ARGO product matches Magento SKU ${sku.trim()}.`,
+    "NOT_FOUND",
+    404,
+  );
 }

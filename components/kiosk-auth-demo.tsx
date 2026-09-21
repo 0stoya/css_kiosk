@@ -375,11 +375,21 @@ export function KioskAuthDemo() {
       return;
     }
 
+    if (!activeCredential) {
+      setMessage("Tap the RFID again before linking it.");
+      setState("error");
+      return;
+    }
+
     setLinkingCard(true);
     setMessage(null);
 
     try {
-      const response = await signedFetch("/api/nfc/link", { method: "POST" });
+      const response = await signedFetch("/api/nfc/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: activeCredential }),
+      });
       const body = (await response.json()) as CustomerResponse;
 
       if (!response.ok || !body.ok || !body.customer) {
