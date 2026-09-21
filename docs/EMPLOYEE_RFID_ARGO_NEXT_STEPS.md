@@ -921,3 +921,108 @@ ensure employee by badge
 ```
 
 The next kiosk implementation PR can now add typed `create_cart` and `upsert_cart_line` provider methods and persistence scaffolding without guessing payload shape.
+
+
+### 21 Sep 2026 — withdrawal request response confirmed
+
+Lanzi now documents the successful `request_cart_withdrawal` response.
+
+Request:
+
+```text
+terminal_id
+cart_id
+user_badge
+```
+
+Successful HTTP 200 response:
+
+```text
+request_key
+phase = queued
+status = pending
+terminal_id
+cart_id
+badge
+message
+```
+
+Important semantic:
+
+```text
+HTTP 200
+≠ machine accepted
+≠ door opened
+≠ collection completed
+```
+
+It means only that ARGO accepted the withdrawal request for processing.
+
+CSS must persist the returned `request_key` immediately. It is the only handle for subsequent `get_withdrawal_status` polling.
+
+The machine may still refuse the request, including when another user has an incompatible active machine session. Nothing opens until the person at the machine confirms locally.
+
+Recommended CSS state transition:
+
+```text
+READY
+  → request_cart_withdrawal
+  → WITHDRAWAL_REQUESTED
+      request_key persisted
+      provider phase=queued
+      provider status=pending
+  → poll get_withdrawal_status
+  → terminal provider result
+```
+
+Do not mark an order collected from the initial HTTP 200.
+
+#### Badge typing
+
+The contract documents `user_badge` as a string, even though some generated curl examples show an unquoted numeric value.
+
+CSS should always submit badges as strings to preserve leading zeroes:
+
+```json
+{"user_badge":"088793"}
+```
+
+Do not derive the canonical badge value from a numeric provider echo.
+
+#### create_cart generated curl discrepancy
+
+The generated docs curl currently shows:
+
+```json
+"lines":"[{\"product_id\":18,...}]"
+```
+
+which is a JSON string containing an encoded array.
+
+The documented parameter type, however, is `array`.
+
+The expected API-native JSON shape should therefore be confirmed as:
+
+```json
+"lines":[
+  {
+    "product_id":18,
+    "attribute_id":0,
+    "quantity":2,
+    "expiry_date":"2027-06-30",
+    "expected_arrival_date":"2026-10-01"
+  }
+]
+```
+
+Do not implement the stringified form unless Lanzi explicitly confirms that the API expects it. It is likely a docs-console/rendering artefact.
+
+#### Write-console warning
+
+"Disabled for write operations" in the documentation console is expected and is not evidence that the provisioned API key lacks `cart_write` / `cart_withdraw`.
+
+Before live acceptance, verify the real key capabilities and use disposable agreed test data.
+
+#### Remaining withdrawal contract item
+
+The request side is now defined. The remaining provider contract required for production collection is the full successful/error response shape and terminal state enumeration for `get_withdrawal_status`.
