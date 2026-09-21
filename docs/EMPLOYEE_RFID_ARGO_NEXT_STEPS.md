@@ -1103,3 +1103,63 @@ Next commerce-facing work after #30:
 5. order → ARGO cart orchestration after OGL correlation exists;
 6. `get_withdrawal_status` once provider states are documented;
 7. loaded/completed provider callbacks.
+
+
+### 21 Sep 2026 — #30 deployed; Employee RFID linkage foundation started
+
+css_kiosk PR #30 is merged and deployed.
+
+Opened Fluid PR #100:
+
+```text
+Allow bound kiosk Employee assignment roots
+```
+
+It adds only:
+
+```text
+css_company_employee(employee_id)
+cssAssignCartEmployee(cart_id, employee_id)
+```
+
+to the kiosk-bound allow-list. Employee directory browsing remains blocked.
+
+Opened css_kiosk PR #31:
+
+```text
+Add Employee RFID to ARGO linkage foundation
+```
+
+It implements the agreed dedicated Employee credential model rather than overloading the existing customer credential table:
+
+```text
+employee_credentials
+  → credential_hash
+  → company_id
+  → employee_id
+  → status/timestamps
+
+employee_provider_links
+  → company_id
+  → employee_id
+  → ARGO employee_id
+  → plant_id
+  → last_verified_at
+```
+
+Raw RFID is not persisted.
+
+The one-scan reconciliation helper now performs:
+
+```text
+exact active Fluid Employee
+→ numeric RFID
+→ ARGO exact badge lookup
+   ├─ found → link
+   └─ missing + writes enabled → create_employee
+→ persist stable provider ID + credential hash
+```
+
+The server-side kiosk session can now carry Employee context separately from the Magento commerce actor.
+
+No enrollment HTTP route/browser Employee selector is exposed yet. The next slice remains the short-lived authorised enrollment handshake followed by Employee-card authentication and automatic cart assignment.
