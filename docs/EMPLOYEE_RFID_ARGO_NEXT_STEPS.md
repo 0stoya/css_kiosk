@@ -1228,3 +1228,73 @@ Recommended next implementation sequence:
 5. Employee-card sign-in using configured commerce actor;
 6. basket isolation + automatic `cssAssignCartEmployee`;
 7. product mapping and ARGO cart creation.
+
+
+### 21 Sep 2026 — commerce actor correction: each Employee has a Magento account
+
+Deployment assumption confirmed: every Employee using the kiosk will also have their own Magento / Fluid company-user account.
+
+Therefore the previously proposed shared company "Kiosk Buyer" commerce actor is **not required** for this deployment.
+
+The correct identity model is:
+
+```text
+one RFID
+  ├─ existing kiosk customer credential link
+  │    → Employee's own Magento customer
+  │    → Employee's own Fluid company-user membership
+  │    → existing bound Magento kiosk session
+  │
+  └─ dedicated Employee credential link
+       → canonical CSS Employee
+       → ARGO employee_id
+```
+
+The two links may use the same credential hash but remain separate durable records because they represent different identities/purposes.
+
+On card presentation:
+
+```text
+RFID
+→ resolve existing Magento customer/company credential
+→ establish Employee's own bound Magento session
+→ resolve dedicated canonical Employee credential
+→ require same company
+→ attach Employee context to kiosk session
+→ cssAssignCartEmployee(employee_id)
+```
+
+No shared or delegated commerce actor is involved.
+
+#### Enrollment consequence
+
+The existing one-time Magento card-link flow can be reused as part of Employee enrollment:
+
+```text
+authorised admin selects canonical Employee
+→ Employee presents RFID
+→ Employee signs in once with their own Magento credentials if the customer credential is not already linked
+→ verify Magento company membership matches canonical Employee company
+→ reconcile RFID with ARGO
+→ persist Employee credential hash + ARGO employee_id
+```
+
+If the RFID is already linked to the correct Magento customer, the enrollment flow only needs to add/verify the canonical Employee + ARGO link.
+
+The canonical Employee still must not be inferred only from the Magento customer identity because the current Fluid Employee model is a separate beneficiary record and does not contain a direct company_user/customer foreign key.
+
+#### Basket isolation
+
+Because each Employee has their own Magento account/customer cart, the shared-actor concurrency concern is removed.
+
+The kiosk still must ensure the authenticated cart is assigned to the canonical Employee before checkout via `cssAssignCartEmployee`, and Fluid remains authoritative for active Employee/company/manager scope and purchase controls.
+
+#### Revised next sequence
+
+1. authorised Employee RFID enrollment handshake;
+2. reuse/verify existing Magento customer-card linkage;
+3. persist canonical Employee + ARGO link;
+4. Employee card sign-in resolves both customer and Employee identities;
+5. automatic whole-cart Employee assignment;
+6. SKU → ARGO product mapping;
+7. order → ARGO cart creation.
