@@ -1062,3 +1062,44 @@ One future production concern exists for approval-required orders: the Magento o
 2. a small Fluid outbound event/callback when a locker Magento order receives its OGL number.
 
 If option 2 is required, Fluid should emit only the commerce event/facts. css_kiosk should still own all ARGO calls and state.
+
+
+### 21 Sep 2026 — ARGO cart write foundation started
+
+Opened css_kiosk PR #30: **Add NEXT ARGO cart write foundation**.
+
+Implemented behind the existing write gate:
+
+```text
+createArgoCart()
+upsertArgoCartLine()
+requestArgoCartWithdrawal()
+```
+
+The provider layer validates badge/date/quantity inputs, sends `create_cart.lines` as a native JSON array, preserves `request_key` semantics and does not interpret queued HTTP 200 as collection completion.
+
+Durable SQLite storage now records:
+
+```text
+Magento order number
+project_number / OGL order reference
+ARGO cart_id
+ARGO employee_id
+terminal_id
+provider cart state
+withdrawal request_key / phase / status
+```
+
+Raw RFID badges are not persisted in the correlation tables.
+
+No checkout route invokes these writes yet and `ARGO_WRITES_ENABLED=false` remains the default.
+
+Next commerce-facing work after #30:
+
+1. kiosk-owned canonical Employee context / cart assignment;
+2. RFID → ARGO employee durable link;
+3. SKU → ARGO product mapping;
+4. explicit expiry/expected-arrival date policy;
+5. order → ARGO cart orchestration after OGL correlation exists;
+6. `get_withdrawal_status` once provider states are documented;
+7. loaded/completed provider callbacks.
