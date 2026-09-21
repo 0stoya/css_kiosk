@@ -1352,3 +1352,51 @@ Next after #33/#103 live acceptance:
 2. attach Employee context to the kiosk session automatically;
 3. automatically call `cssAssignCartEmployee` for the active customer cart;
 4. then build SKU → ARGO product mapping and order → `create_cart`.
+
+
+### 21 Sep 2026 — simple product mapping + physical cart-release acceptance
+
+Opened css_kiosk PR #34:
+
+```text
+Add loaded-cart locker release test
+```
+
+Product mapping is intentionally minimal:
+
+```text
+Magento SKU
+→ exact active ARGO customer_code
+→ fallback exact active ARGO code
+→ one match = product_id
+→ zero/multiple = fail closed
+```
+
+No manual mapping table is introduced unless real data proves code alignment is insufficient.
+
+The manager/admin Locker workspace now has a separate **Release loaded cart** acceptance section.
+
+This does not enable arbitrary cell-level opening.
+
+Acceptance flow:
+
+```text
+manager/admin session
+→ known physically loaded cart_id
+→ active collector badge
+→ verify configured terminal + cart + badge
+→ request_cart_withdrawal
+→ queued/pending + request_key
+→ operator confirms at ARGO machine
+→ ARGO opens the cart's correct compartment(s)
+```
+
+The typed collector badge is a temporary acceptance-tool input and is not persisted. Normal Employee collection should later use the authenticated Employee RFID identity.
+
+Physical test requires:
+
+```text
+ARGO_WRITES_ENABLED=true
+```
+
+Do not infer that an observed cart is loaded merely because it has product lines. Use a cart confirmed loaded by Lanzi/operations/the machine.
