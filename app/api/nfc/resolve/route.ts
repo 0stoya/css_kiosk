@@ -88,15 +88,16 @@ export async function POST(request: Request) {
           );
         }
 
+        let provider = employeeCredential.provider;
         if (
           credential.type === "uid" &&
           /^\d{1,20}$/.test(credential.value)
         ) {
-          employeeCredential.provider = rememberEmployeeProviderBadge({
+          provider = rememberEmployeeProviderBadge({
             companyId: employeeCredential.link.companyId,
             employeeId: employeeCredential.link.employeeId,
-            providerEmployeeId: employeeCredential.provider.providerEmployeeId,
-            plantId: employeeCredential.provider.plantId,
+            providerEmployeeId: provider.providerEmployeeId,
+            plantId: provider.plantId,
             argoBadge: credential.value,
           });
         }
@@ -104,8 +105,8 @@ export async function POST(request: Request) {
         employee = {
           companyId: employeeCredential.link.companyId,
           employeeId: employeeCredential.link.employeeId,
-          argoEmployeeId: employeeCredential.provider.providerEmployeeId,
-          argoPlantId: employeeCredential.provider.plantId,
+          argoEmployeeId: provider.providerEmployeeId,
+          argoPlantId: provider.plantId,
         };
       }
 
