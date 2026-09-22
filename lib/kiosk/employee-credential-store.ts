@@ -37,6 +37,7 @@ export type EmployeeProviderLink = {
   employeeId: number;
   provider: "ARGO";
   providerEmployeeId: number;
+  argoBadge: string | null;
   plantId: number;
   lastVerifiedAt: string;
   createdAt: string;
@@ -68,6 +69,7 @@ type ProviderRow = {
   employee_id: number;
   provider: string;
   provider_employee_id: number;
+  provider_badge: string | null;
   plant_id: number;
   last_verified_at: string;
   created_at: string;
@@ -131,6 +133,7 @@ function getDatabase() {
         employee_id INTEGER NOT NULL,
         provider TEXT NOT NULL,
         provider_employee_id INTEGER NOT NULL,
+        provider_badge TEXT,
         plant_id INTEGER NOT NULL,
         last_verified_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
@@ -138,6 +141,21 @@ function getDatabase() {
         PRIMARY KEY (company_id, employee_id, provider),
         UNIQUE (provider, plant_id, provider_employee_id)
       );
+    `);
+
+    const providerColumns = nextDatabase
+      .prepare("PRAGMA table_info(employee_provider_links)")
+      .all() as Array<{ name?: string }>;
+    if (!providerColumns.some((column) => column.name === "provider_badge")) {
+      nextDatabase.exec(
+        "ALTER TABLE employee_provider_links ADD COLUMN provider_badge TEXT",
+      );
+    }
+
+    nextDatabase.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_provider_links_badge
+        ON employee_provider_links(provider, plant_id, provider_badge)
+        WHERE provider_badge IS NOT NULL;
     `);
 
     database = nextDatabase;
@@ -165,6 +183,18 @@ function positiveInteger(value: number, label: string) {
     );
   }
   return value;
+}
+
+function argoBadge(value: string, label = "argo_badge") {
+  const badge = value.trim();
+  if (!/^\d{1,20}$/.test(badge)) {
+    throw new EmployeeCredentialStoreError(
+      `${label} must contain 1-20 digits.`,
+      "STORE_UNAVAILABLE",
+      503,
+    );
+  }
+  return badge;
 }
 
 function credentialHash(credential: NfcCredential) {
@@ -219,6 +249,10 @@ function providerFromRow(row: ProviderRow | undefined): EmployeeProviderLink | n
       row.provider_employee_id,
       "provider_employee_id",
     ),
+    argoBadge:
+      typeof row.provider_badge === "string" && row.provider_badge.trim()
+        ? argoBadge(row.provider_badge)
+        : null,
     plantId: positiveInteger(row.plant_id, "plant_id"),
     lastVerifiedAt: row.last_verified_at,
     createdAt: row.created_at,
@@ -237,6 +271,7 @@ function providerForEmployee(
       employee_id,
       provider,
       provider_employee_id,
+      provider_badge,
       plant_id,
       last_verified_at,
       created_at,
@@ -304,6 +339,7 @@ export function linkEmployeeCredentialWithArgo(input: {
   companyId: number;
   employeeId: number;
   argoEmployeeId: number;
+  argoBadge: string;
   plantId: number;
 }): {
   link: EmployeeCredentialLink;
@@ -316,6 +352,7 @@ export function linkEmployeeCredentialWithArgo(input: {
     input.argoEmployeeId,
     "argo_employee_id",
   );
+  const providerBadge = argoBadge(input.argoBadge);
   const plantId = positiveInteger(input.plantId, "plant_id");
   const hash = credentialHash(input.credential);
   const timestamp = nowIso();
@@ -417,9 +454,16 @@ export function linkEmployeeCredentialWithArgo(input: {
     if (providerExisting) {
       db.prepare(`
         UPDATE employee_provider_links
-        SET last_verified_at = ?, updated_at = ?
+        SET provider_badge = ?, last_verified_at = ?, updated_at = ?
         WHERE company_id = ? AND employee_id = ? AND provider = ?
-      `).run(timestamp, timestamp, companyId, employeeId, PROVIDER);
+      `).run(
+        providerBadge,
+        timestamp,
+        timestamp,
+        companyId,
+        employeeId,
+        PROVIDER,
+      );
     } else {
       db.prepare(`
         INSERT INTO employee_provider_links (
@@ -427,16 +471,18 @@ export function linkEmployeeCredentialWithArgo(input: {
           employee_id,
           provider,
           provider_employee_id,
+          provider_badge,
           plant_id,
           last_verified_at,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         companyId,
         employeeId,
         PROVIDER,
         argoEmployeeId,
+        providerBadge,
         plantId,
         timestamp,
         timestamp,
@@ -460,6 +506,61 @@ export function linkEmployeeCredentialWithArgo(input: {
   }
 
   return { link: resolved.link, provider: resolved.provider };
+}
+
+export function rememberEmployeeProviderBadge(input: {
+  companyId: number;
+  employeeId: number;
+  providerEmployeeId: number;
+  plantId: number;
+  argoBadge: string;
+}) {
+  const companyId = positiveInteger(input.companyId, "company_id");
+  const employeeId = positiveInteger(input.employeeId, "employee_id");
+  const providerEmployeeId = positiveInteger(
+    input.providerEmployeeId,
+    "provider_employee_id",
+  );
+  const plantId = positiveInteger(input.plantId, "plant_id");
+  const providerBadge = argoBadge(input.argoBadge);
+  const db = getDatabase();
+  const existing = providerForEmployee(db, companyId, employeeId);
+
+  if (
+    !existing ||
+    existing.providerEmployeeId !== providerEmployeeId ||
+    existing.plantId !== plantId
+  ) {
+    throw new EmployeeCredentialStoreError(
+      "The ARGO badge does not match the stored Employee provider link.",
+      "EMPLOYEE_ALREADY_LINKED",
+      409,
+    );
+  }
+
+  const timestamp = nowIso();
+  db.prepare(`
+    UPDATE employee_provider_links
+    SET provider_badge = ?, last_verified_at = ?, updated_at = ?
+    WHERE company_id = ? AND employee_id = ? AND provider = ?
+  `).run(
+    providerBadge,
+    timestamp,
+    timestamp,
+    companyId,
+    employeeId,
+    PROVIDER,
+  );
+
+  const updated = providerForEmployee(db, companyId, employeeId);
+  if (!updated) {
+    throw new EmployeeCredentialStoreError(
+      "Employee ARGO provider link could not be reloaded.",
+      "STORE_UNAVAILABLE",
+      503,
+    );
+  }
+  return updated;
 }
 
 export function revokeEmployeeCredential(input: {
