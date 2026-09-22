@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ArgoApiError } from "@/lib/argo/client";
+import { getArgoEmployeeIdentityDiagnostic } from "@/lib/argo/employee-identity-diagnostic";
 import { getArgoConfig } from "@/lib/argo/config";
 import { getArgoCart } from "@/lib/argo/carts";
 import { resolveArgoEmployeeByBadge } from "@/lib/argo/employees";
@@ -81,7 +82,8 @@ export async function POST(request: Request) {
     payload.action !== "capability" &&
     payload.action !== "status" &&
     payload.action !== "open" &&
-    payload.action !== "withdraw"
+    payload.action !== "withdraw" &&
+    payload.action !== "identity_diagnostic"
   ) {
     return NextResponse.json(
       { ok: false, code: "INVALID_REQUEST", error: "Locker management request is invalid." },
@@ -198,6 +200,53 @@ export async function POST(request: Request) {
       },
       { status: 403 },
     );
+  }
+
+  if (payload.action === "identity_diagnostic") {
+    if (!collectorBadge) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "LOCKER_DIAGNOSTIC_BADGE_UNAVAILABLE",
+          error: "This session does not have an ARGO provider badge available.",
+        },
+        { status: 409 },
+      );
+    }
+
+    try {
+      const diagnostic = await getArgoEmployeeIdentityDiagnostic({
+        badge: collectorBadge,
+        expectedEmployeeId:
+          session.employee?.argoEmployeeId || null,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        diagnostic,
+      });
+    } catch (error) {
+      if (error instanceof ArgoApiError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: `LOCKER_DIAGNOSTIC_${error.code}`,
+            error: error.message,
+            retryAfterSeconds: error.retryAfterSeconds,
+          },
+          { status: error.status },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "LOCKER_DIAGNOSTIC_UNAVAILABLE",
+          error: "ARGO identity diagnostic could not be completed.",
+        },
+        { status: 503 },
+      );
+    }
   }
 
   if (payload.action === "withdraw") {
