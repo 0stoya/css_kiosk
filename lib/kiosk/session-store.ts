@@ -16,8 +16,9 @@ export type KioskSession = {
   magentoToken: string;
   customer: VerifiedKioskCustomer;
   employee: KioskSessionEmployeeContext | null;
-  // Raw numeric RFID is deliberately memory-only and lives no longer than this
-  // kiosk session. It is never written to SQLite or returned to the browser.
+  // This session copy remains memory-only and is never returned to the browser.
+  // Separately, an enrolled Employee may have the same numeric value retained
+  // server-side as ARGO provider metadata so remote provider jobs can use it.
   rfidBadge: string | null;
   createdAt: string;
   expiresAt: string;
