@@ -19,6 +19,8 @@ export type ArgoEmployeeIdentityDiagnostic = {
   resultCount: number;
   employeeId: string | null;
   employeeIdJsonType: ArgoJsonType;
+  plantShape: "plant.id" | "plant_id" | "missing";
+  plantContainerJsonType: ArgoJsonType;
   plantId: string | null;
   plantIdJsonType: ArgoJsonType;
   expectedPlantId: number;
@@ -118,18 +120,33 @@ export async function getArgoEmployeeIdentityDiagnostic(input: {
   }
 
   const hasId = Object.prototype.hasOwnProperty.call(row, "id");
-  const hasPlantId = Object.prototype.hasOwnProperty.call(row, "plant_id");
+  const hasPlant = Object.prototype.hasOwnProperty.call(row, "plant");
+  const hasLegacyPlantId = Object.prototype.hasOwnProperty.call(row, "plant_id");
   const hasActive = Object.prototype.hasOwnProperty.call(row, "active");
   const hasBadge = Object.prototype.hasOwnProperty.call(row, "badge");
   const rawId = row.id;
-  const rawPlantId = row.plant_id;
+  const plant = isRecord(row.plant) ? row.plant : null;
+  const hasNestedPlantId =
+    plant !== null && Object.prototype.hasOwnProperty.call(plant, "id");
+  const rawPlantId = hasNestedPlantId
+    ? plant!.id
+    : hasLegacyPlantId
+      ? row.plant_id
+      : undefined;
+  const plantShape = hasNestedPlantId
+    ? "plant.id" as const
+    : hasLegacyPlantId
+      ? "plant_id" as const
+      : "missing" as const;
 
   return {
     resultCount: rows.length,
     employeeId: safeScalar(rawId, hasId),
     employeeIdJsonType: jsonType(rawId, hasId),
-    plantId: safeScalar(rawPlantId, hasPlantId),
-    plantIdJsonType: jsonType(rawPlantId, hasPlantId),
+    plantShape,
+    plantContainerJsonType: jsonType(row.plant, hasPlant),
+    plantId: safeScalar(rawPlantId, plantShape !== "missing"),
+    plantIdJsonType: jsonType(rawPlantId, plantShape !== "missing"),
     expectedPlantId: config.plantId,
     plantMatch: integerValue(rawPlantId) === config.plantId,
     active: safeScalar(row.active, hasActive),
