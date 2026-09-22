@@ -79,6 +79,10 @@ export async function reconcileEmployeeCredentialWithArgo(input: {
     companyId,
     employeeId,
     argoEmployeeId: ensured.employee.id,
+    // Persist the exact presented badge string after ARGO has confirmed the
+    // employee lookup/create. This preserves leading zeroes if the provider
+    // later serialises its badge numerically.
+    argoBadge: input.credential.value,
     plantId: ensured.employee.plantId,
   });
 

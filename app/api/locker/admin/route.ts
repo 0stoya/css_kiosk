@@ -10,6 +10,10 @@ import {
   KioskDeviceRequestError,
   readTrustedJsonRequest,
 } from "@/lib/kiosk/device-request";
+import {
+  getEmployeeProviderLink,
+  rememberEmployeeProviderBadge,
+} from "@/lib/kiosk/employee-credential-store";
 import { getKioskSessionId } from "@/lib/kiosk/session-cookie";
 import { getKioskSession } from "@/lib/kiosk/session-store";
 import {
@@ -136,15 +140,40 @@ export async function POST(request: Request) {
   }
 
   const canViewStatus = capability?.canViewLockerStatus === true;
+  let storedProviderBadge: string | null = null;
+
+  if (session.employee) {
+    try {
+      const provider = getEmployeeProviderLink(
+        session.employee.companyId,
+        session.employee.employeeId,
+      );
+      if (
+        provider &&
+        provider.providerEmployeeId === session.employee.argoEmployeeId &&
+        provider.plantId === session.employee.argoPlantId
+      ) {
+        storedProviderBadge = provider.argoBadge;
+      }
+    } catch {
+      // The current in-memory RFID remains a safe fallback for this live
+      // session if durable provider storage is temporarily unavailable.
+    }
+  }
+
   const sessionBadge = session.rfidBadge;
+  const collectorBadge =
+    storedProviderBadge ||
+    (typeof sessionBadge === "string" && /^\d{1,20}$/.test(sessionBadge)
+      ? sessionBadge
+      : null);
   const writesEnabled = getArgoConfig().writesEnabled;
-  const hasSessionBadge =
-    typeof sessionBadge === "string" && /^\d{1,20}$/.test(sessionBadge);
-  const canReleaseCart = canViewStatus && writesEnabled && hasSessionBadge;
+  const hasCollectorBadge = typeof collectorBadge === "string";
+  const canReleaseCart = canViewStatus && writesEnabled && hasCollectorBadge;
   const releaseUnavailableReason = !writesEnabled
     ? "ARGO writes disabled"
-    : !hasSessionBadge
-      ? "Sign in with RFID again"
+    : !hasCollectorBadge
+      ? "Employee ARGO badge unavailable"
       : null;
 
   if (payload.action === "capability") {
@@ -189,7 +218,7 @@ export async function POST(request: Request) {
       payload.cartId > 0
         ? payload.cartId
         : null;
-    if (cartId === null || !sessionBadge) {
+    if (cartId === null || !collectorBadge) {
       return NextResponse.json(
         {
           ok: false,
@@ -197,7 +226,7 @@ export async function POST(request: Request) {
           error:
             cartId === null
               ? "Enter a valid loaded cart ID."
-              : "Sign in again with the RFID badge that should collect this cart.",
+              : "This Employee does not have an ARGO badge available for collection.",
         },
         { status: 400 },
       );
@@ -229,7 +258,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const collector = await resolveArgoEmployeeByBadge(sessionBadge);
+      const collector = await resolveArgoEmployeeByBadge(collectorBadge);
       if (!collector || collector.active === false) {
         return NextResponse.json(
           {
@@ -241,10 +270,24 @@ export async function POST(request: Request) {
         );
       }
 
+      if (
+        session.employee &&
+        collector.id === session.employee.argoEmployeeId &&
+        collector.plantId === session.employee.argoPlantId
+      ) {
+        rememberEmployeeProviderBadge({
+          companyId: session.employee.companyId,
+          employeeId: session.employee.employeeId,
+          providerEmployeeId: collector.id,
+          plantId: collector.plantId,
+          argoBadge: collectorBadge,
+        });
+      }
+
       const withdrawal = await requestArgoCartWithdrawal({
         terminalId: terminal.id,
         cartId,
-        userBadge: sessionBadge,
+        userBadge: collectorBadge,
       });
 
       return NextResponse.json({
