@@ -1564,3 +1564,48 @@ Accept numeric-string ARGO employee plant IDs
 The parser now accepts both numeric JSON and decimal-string representations for Employee `plant_id`, while `resolveArgoEmployeeByBadge` still requires the parsed value to equal configured `ARGO_PLANT_ID`.
 
 If the live response is instead null/missing or another shape, capture the raw `list_employees` response and tighten the parser to the exact provider contract before retrying the physical withdrawal.
+
+
+### 22 Sep 2026 — durable ARGO badge provider metadata
+
+Architecture update: the earlier rule "raw RFID is never persisted" is now narrowed.
+
+The credential hash remains the authentication key and CSS still does not use a plaintext RFID value to authenticate a kiosk session.
+
+However, because NEXT ARGO requires `user_badge` for remote/delayed provider operations, css_kiosk now deliberately retains the numeric badge server-side as ARGO provider metadata.
+
+Opened css_kiosk PR #40:
+
+```text
+Persist ARGO Employee badge server-side
+```
+
+Durable provider record:
+
+```text
+company_id
+employee_id
+provider = ARGO
+provider_employee_id
+provider_badge
+plant_id
+last_verified_at
+created_at
+updated_at
+```
+
+Security boundary:
+
+- `credential_hash` remains the card-recognition/authentication identifier;
+- `provider_badge` is server-only provider metadata;
+- it is never returned to browser state;
+- it is validated as 1–20 numeric digits;
+- provider Employee ID + plant remain the stable correlation authority.
+
+New enrollment stores the exact presented badge after ARGO has confirmed the Employee lookup/create, preserving leading zeroes.
+
+Existing links backfill the durable badge on the next ordinary RFID login after both the customer credential hash and canonical Employee credential hash resolve successfully.
+
+The production SQLite schema migrates in place by adding nullable `provider_badge`; no database rebuild is required.
+
+The cart-scoped Open locker flow prefers the durable provider badge for Employee sessions and falls back to the current in-memory RFID only for legacy/non-Employee admin sessions.
