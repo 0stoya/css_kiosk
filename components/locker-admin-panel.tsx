@@ -73,6 +73,19 @@ type LockerAdminResponse = {
     cartId: number;
     message: string;
   };
+  diagnostic?: {
+    resultCount: number;
+    employeeId: string | null;
+    employeeIdJsonType: string;
+    plantId: string | null;
+    plantIdJsonType: string;
+    expectedPlantId: number;
+    plantMatch: boolean;
+    active: string | null;
+    activeJsonType: string;
+    badgeJsonType: string;
+    matchedStoredEmployeeId: boolean | null;
+  };
 };
 
 type LockerAdminPanelProps = {
@@ -118,6 +131,9 @@ export function LockerAdminPanel({
   const [releasePending, setReleasePending] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
   const [releaseResult, setReleaseResult] = useState<NonNullable<LockerAdminResponse["withdrawal"]> | null>(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<NonNullable<LockerAdminResponse["diagnostic"]> | null>(null);
 
   const loadStatus = useCallback(
     async () => {
@@ -165,6 +181,37 @@ export function LockerAdminPanel({
     setLoading(true);
     setError(null);
     void loadStatus();
+  }
+
+  async function runIdentityDiagnostic() {
+    setDiagnosticLoading(true);
+    setDiagnosticError(null);
+    setDiagnostic(null);
+
+    try {
+      const response = await signedFetch("/api/locker/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "identity_diagnostic" }),
+      });
+      const body = (await response.json()) as LockerAdminResponse;
+
+      if (response.status === 401 || body.code === "SESSION_REQUIRED") {
+        onSessionExpired("Your kiosk session has expired. Tap your card to sign in again.");
+        return;
+      }
+
+      if (!response.ok || !body.ok || !body.diagnostic) {
+        setDiagnosticError(body.error || "ARGO identity diagnostic failed.");
+        return;
+      }
+
+      setDiagnostic(body.diagnostic);
+    } catch {
+      setDiagnosticError("ARGO identity diagnostic could not be completed.");
+    } finally {
+      setDiagnosticLoading(false);
+    }
   }
 
   async function requestCartRelease() {
@@ -356,8 +403,48 @@ export function LockerAdminPanel({
                 </button>
               </div>
               <p className={styles.releaseHint}>
-                Your sign-in RFID is kept only in the current in-memory kiosk session and is sent transiently to ARGO for this request. It is not written to kiosk storage.
+                The ARGO badge is retained server-side as provider metadata for this Employee and is never exposed to browser state.
               </p>
+              <div className={styles.diagnosticActions}>
+                <button
+                  className={styles.diagnosticButton}
+                  type="button"
+                  onClick={() => void runIdentityDiagnostic()}
+                  disabled={diagnosticLoading}
+                >
+                  {diagnosticLoading ? "Checking ARGO identity…" : "Run ARGO identity diagnostic"}
+                </button>
+              </div>
+              {diagnosticError ? (
+                <p className={styles.openError} role="alert">{diagnosticError}</p>
+              ) : null}
+              {diagnostic ? (
+                <div className={styles.diagnosticResult} role="status">
+                  <strong>ARGO identity diagnostic</strong>
+                  <dl>
+                    <div><dt>Employee ID</dt><dd>{diagnostic.employeeId ?? "missing"}</dd></div>
+                    <div><dt>ID JSON type</dt><dd>{diagnostic.employeeIdJsonType}</dd></div>
+                    <div><dt>plant_id</dt><dd>{diagnostic.plantId ?? "missing"}</dd></div>
+                    <div><dt>plant_id JSON type</dt><dd>{diagnostic.plantIdJsonType}</dd></div>
+                    <div><dt>Expected plant</dt><dd>{diagnostic.expectedPlantId}</dd></div>
+                    <div><dt>Plant match</dt><dd>{diagnostic.plantMatch ? "Yes" : "No"}</dd></div>
+                    <div><dt>Active</dt><dd>{diagnostic.active ?? "missing"} ({diagnostic.activeJsonType})</dd></div>
+                    <div><dt>Badge JSON type</dt><dd>{diagnostic.badgeJsonType}</dd></div>
+                    <div><dt>Provider rows</dt><dd>{diagnostic.resultCount}</dd></div>
+                    <div>
+                      <dt>Stored Employee match</dt>
+                      <dd>
+                        {diagnostic.matchedStoredEmployeeId === null
+                          ? "Not available"
+                          : diagnostic.matchedStoredEmployeeId
+                            ? "Yes"
+                            : "No"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <small>The badge value itself is deliberately not shown.</small>
+                </div>
+              ) : null}
               {releaseError ? (
                 <p className={styles.openError} role="alert">{releaseError}</p>
               ) : null}
