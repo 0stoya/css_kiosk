@@ -1609,3 +1609,35 @@ Existing links backfill the durable badge on the next ordinary RFID login after 
 The production SQLite schema migrates in place by adding nullable `provider_badge`; no database rebuild is required.
 
 The cart-scoped Open locker flow prefers the durable provider badge for Employee sessions and falls back to the current in-memory RFID only for legacy/non-Employee admin sessions.
+
+
+### 22 Sep 2026 — safe ARGO identity diagnostic
+
+Opened css_kiosk PR #41:
+
+```text
+Add safe ARGO identity diagnostic
+```
+
+The Locker workspace can now inspect the raw `list_employees` response shape before the normal Employee parser runs.
+
+It shows:
+
+```text
+Employee ID
+Employee ID JSON type
+plant_id raw scalar
+plant_id JSON type
+Expected plant
+Plant match
+active raw scalar/type
+badge JSON type
+provider result count
+stored Employee ID match
+```
+
+The numeric badge value itself is deliberately omitted from the browser response/UI.
+
+The diagnostic uses the existing trusted-device + locker-management permission boundary and the server-side ARGO provider badge introduced in #40.
+
+This gives a remote operator enough evidence to distinguish number/string/null/missing provider fields without exposing the RFID.
