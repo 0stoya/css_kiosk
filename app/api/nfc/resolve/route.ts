@@ -10,6 +10,7 @@ import {
 } from "@/lib/kiosk/credential-store";
 import {
   EmployeeCredentialStoreError,
+  rememberEmployeeProviderBadge,
   resolveEmployeeCredential,
 } from "@/lib/kiosk/employee-credential-store";
 import {
@@ -85,6 +86,19 @@ export async function POST(request: Request) {
             },
             { status: 409 },
           );
+        }
+
+        if (
+          credential.type === "uid" &&
+          /^\d{1,20}$/.test(credential.value)
+        ) {
+          employeeCredential.provider = rememberEmployeeProviderBadge({
+            companyId: employeeCredential.link.companyId,
+            employeeId: employeeCredential.link.employeeId,
+            providerEmployeeId: employeeCredential.provider.providerEmployeeId,
+            plantId: employeeCredential.provider.plantId,
+            argoBadge: credential.value,
+          });
         }
 
         employee = {
