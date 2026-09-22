@@ -541,11 +541,10 @@ export function rememberEmployeeProviderBadge(input: {
   const timestamp = nowIso();
   db.prepare(`
     UPDATE employee_provider_links
-    SET provider_badge = ?, last_verified_at = ?, updated_at = ?
+    SET provider_badge = ?, updated_at = ?
     WHERE company_id = ? AND employee_id = ? AND provider = ?
   `).run(
     providerBadge,
-    timestamp,
     timestamp,
     companyId,
     employeeId,
