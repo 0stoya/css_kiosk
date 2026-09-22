@@ -1641,3 +1641,41 @@ The numeric badge value itself is deliberately omitted from the browser response
 The diagnostic uses the existing trusted-device + locker-management permission boundary and the server-side ARGO provider badge introduced in #40.
 
 This gives a remote operator enough evidence to distinguish number/string/null/missing provider fields without exposing the RFID.
+
+
+### 22 Sep 2026 — live list_employees plant object confirmed
+
+Remote live ARGO response confirmed the Employee shape is:
+
+```json
+{
+  "id": 90,
+  "badge": "88793",
+  "plant": {
+    "id": 150,
+    "name": "(England)"
+  },
+  "active": true
+}
+```
+
+There is no top-level `plant_id` in the observed response.
+
+Opened css_kiosk PR #42:
+
+```text
+Parse nested ARGO Employee plant object
+```
+
+Parser rule is now:
+
+```text
+preferred: plant.id
+fallback:  plant_id
+```
+
+The parsed value is still required to be a safe positive integer and must equal configured `ARGO_PLANT_ID` in badge resolution.
+
+PR #41 diagnostic was also updated to report whether the provider used `plant.id`, legacy `plant_id`, or no usable plant field.
+
+This means the earlier #39 numeric-string fix was not the actual live issue; the live mismatch was nested object vs top-level field.
