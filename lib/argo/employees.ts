@@ -49,6 +49,30 @@ export function normalizeArgoBadge(value: string) {
   return badge;
 }
 
+function providerPositiveInteger(value: unknown, context: string) {
+  if (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  ) {
+    return value;
+  }
+
+  if (
+    typeof value === "string" &&
+    /^[1-9]\d*$/.test(value.trim())
+  ) {
+    const parsed = Number(value.trim());
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
+
+  throw new ArgoApiError(
+    `NEXT ARGO returned an invalid response for ${context}.`,
+    "INVALID_RESPONSE",
+    502,
+  );
+}
+
 function providerBadge(value: unknown, context: string) {
   if (typeof value === "string" && /^\d{1,20}$/.test(value.trim())) {
     return value.trim();
@@ -77,7 +101,10 @@ function employee(value: unknown, context: string): ArgoEmployee {
 
   return {
     id: positiveInteger(row.id, `${context}.id`),
-    plantId: positiveInteger(row.plant_id, `${context}.plant_id`),
+    // list_employees currently serialises plant_id as a numeric string in
+    // some responses. Accept that representation but still require a safe,
+    // positive integer and re-check it against the configured plant later.
+    plantId: providerPositiveInteger(row.plant_id, `${context}.plant_id`),
     badge: providerBadge(row.badge, `${context}.badge`),
     firstName: nullableText(row.first_name, `${context}.first_name`),
     lastName: nullableText(row.last_name, `${context}.last_name`),
