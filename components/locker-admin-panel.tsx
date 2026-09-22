@@ -77,6 +77,8 @@ type LockerAdminResponse = {
     resultCount: number;
     employeeId: string | null;
     employeeIdJsonType: string;
+    plantShape: string;
+    plantContainerJsonType: string;
     plantId: string | null;
     plantIdJsonType: string;
     expectedPlantId: number;
@@ -424,8 +426,10 @@ export function LockerAdminPanel({
                   <dl>
                     <div><dt>Employee ID</dt><dd>{diagnostic.employeeId ?? "missing"}</dd></div>
                     <div><dt>ID JSON type</dt><dd>{diagnostic.employeeIdJsonType}</dd></div>
-                    <div><dt>plant_id</dt><dd>{diagnostic.plantId ?? "missing"}</dd></div>
-                    <div><dt>plant_id JSON type</dt><dd>{diagnostic.plantIdJsonType}</dd></div>
+                    <div><dt>Plant source</dt><dd>{diagnostic.plantShape}</dd></div>
+                    <div><dt>plant JSON type</dt><dd>{diagnostic.plantContainerJsonType}</dd></div>
+                    <div><dt>Plant ID</dt><dd>{diagnostic.plantId ?? "missing"}</dd></div>
+                    <div><dt>Plant ID JSON type</dt><dd>{diagnostic.plantIdJsonType}</dd></div>
                     <div><dt>Expected plant</dt><dd>{diagnostic.expectedPlantId}</dd></div>
                     <div><dt>Plant match</dt><dd>{diagnostic.plantMatch ? "Yes" : "No"}</dd></div>
                     <div><dt>Active</dt><dd>{diagnostic.active ?? "missing"} ({diagnostic.activeJsonType})</dd></div>
