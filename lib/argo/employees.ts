@@ -98,13 +98,22 @@ function equivalentBadge(left: string, right: string) {
 
 function employee(value: unknown, context: string): ArgoEmployee {
   const row = record(value, context);
+  const plant =
+    row.plant !== undefined && row.plant !== null
+      ? record(row.plant, `${context}.plant`)
+      : null;
+  const plantIdValue = plant?.id ?? row.plant_id;
+  const plantIdContext =
+    plant?.id !== undefined
+      ? `${context}.plant.id`
+      : `${context}.plant_id`;
 
   return {
     id: positiveInteger(row.id, `${context}.id`),
-    // list_employees currently serialises plant_id as a numeric string in
-    // some responses. Accept that representation but still require a safe,
-    // positive integer and re-check it against the configured plant later.
-    plantId: providerPositiveInteger(row.plant_id, `${context}.plant_id`),
+    // Live list_employees returns plant as an object:
+    // { plant: { id: 150, name: "(England)" } }.
+    // Retain plant_id as a compatibility fallback for older/provider variants.
+    plantId: providerPositiveInteger(plantIdValue, plantIdContext),
     badge: providerBadge(row.badge, `${context}.badge`),
     firstName: nullableText(row.first_name, `${context}.first_name`),
     lastName: nullableText(row.last_name, `${context}.last_name`),
