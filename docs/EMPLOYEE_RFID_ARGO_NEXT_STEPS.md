@@ -1779,3 +1779,26 @@ The implementation does not hard-code 17. It discovers exactly one distinct prof
 The known Customer API exposes `create_employee` but no `create_profile`. If no Admin profile is discoverable, css_kiosk fails closed rather than attempting to invent/create one.
 
 Important historical-card limitation: old kiosk credentials stored only the SHA-256 credential hash. If no live RFID session or durable provider badge exists for a legacy admin card, the original numeric badge cannot be recovered from the hash. The bootstrap therefore occurs on the next live card sign-in/release attempt, after which the ARGO admin mapping and provider badge are durable server-side.
+
+
+### 23 Sep 2026 — locker authority / ARGO admin bootstrap alignment
+
+Live acceptance after #43 showed:
+
+```text
+Only a company admin may provision a missing NEXT ARGO admin collector.
+```
+
+The account was already authorised for the Locker workspace/release path through `canViewLockerStatus`, but the missing-provider bootstrap had an inconsistent stricter `is_company_admin` requirement.
+
+Opened css_kiosk PR #44:
+
+```text
+Align ARGO admin provisioning with locker authority
+```
+
+The missing ARGO collector bootstrap now uses the same server-side Locker-management capability that already authorises the release flow.
+
+This does not widen Locker access; it removes a contradictory secondary gate.
+
+Existing safeguards remain: write gate, exact badge lookup, dynamic existing Admin profile discovery, active/plant/badge validation, cart/terminal validation, and ARGO machine-side confirmation.
