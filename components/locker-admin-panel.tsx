@@ -57,6 +57,8 @@ type LockerAdminResponse = {
   ok?: boolean;
   code?: string;
   error?: string;
+  providerCode?: string | null;
+  providerMessage?: string | null;
   capability?: {
     canViewStatus: boolean;
     canOpen: boolean;
@@ -196,7 +198,11 @@ export function LockerAdminPanel({
       }
 
       if (!response.ok || !body.ok || !body.withdrawal) {
-        setReleaseError(body.error || "The cart release request was rejected.");
+        setReleaseError(
+          body.providerCode
+            ? `${body.error || "The cart release request was rejected."} [${body.providerCode}]`
+            : body.error || "The cart release request was rejected.",
+        );
         return;
       }
 
