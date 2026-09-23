@@ -415,8 +415,8 @@ export async function POST(request: Request) {
     } catch (error) {
       if (error instanceof ArgoApiError) {
         const publicError =
-          error.code === "PROVIDER_ERROR" && error.providerMessage
-            ? `ARGO ${providerStage} failed: ${error.providerMessage}`
+          error.providerCode === "database_unavailable"
+            ? `${error.message} This is a temporary NEXT ARGO outage; no locker action was taken. Please try again.`
             : error.message;
 
         return NextResponse.json(
