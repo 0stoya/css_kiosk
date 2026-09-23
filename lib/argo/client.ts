@@ -19,6 +19,7 @@ export class ArgoApiError extends Error {
     readonly status: number,
     readonly providerCode: string | null = null,
     readonly retryAfterSeconds: number | null = null,
+    readonly providerMessage: string | null = null,
   ) {
     super(message);
     this.name = "ArgoApiError";
@@ -93,7 +94,14 @@ function mappedError(input: {
   const message = input.providerMessage || "NEXT ARGO rejected the request.";
 
   if (input.status === 400) {
-    return new ArgoApiError(message, "INVALID_REQUEST", 400, input.providerCode);
+    return new ArgoApiError(
+      message,
+      "INVALID_REQUEST",
+      400,
+      input.providerCode,
+      null,
+      input.providerMessage,
+    );
   }
   if (input.status === 401) {
     return new ArgoApiError(
@@ -101,6 +109,8 @@ function mappedError(input: {
       "UNAUTHORIZED",
       503,
       input.providerCode,
+      null,
+      input.providerMessage,
     );
   }
   if (input.status === 403) {
@@ -116,6 +126,7 @@ function mappedError(input: {
       503,
       input.providerCode,
       input.retryAfter,
+      input.providerMessage,
     );
   }
 
@@ -124,6 +135,8 @@ function mappedError(input: {
     "PROVIDER_ERROR",
     502,
     input.providerCode,
+    null,
+    input.providerMessage,
   );
 }
 
