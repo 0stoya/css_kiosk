@@ -295,7 +295,7 @@ export async function POST(request: Request) {
           badge: collectorBadge,
           firstName: session.customer.firstName,
           lastName: session.customer.lastName,
-          allowCreate: capability?.isCompanyAdmin === true,
+          allowCreate: canViewStatus,
         });
         collector = ensured.employee;
         adminCollectorCreated = ensured.created;
