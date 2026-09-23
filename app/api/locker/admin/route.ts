@@ -3,6 +3,7 @@ import { ensureArgoAdminCollector } from "@/lib/argo/admin-collectors";
 import { ArgoApiError } from "@/lib/argo/client";
 import { getArgoConfig } from "@/lib/argo/config";
 import { getArgoCart } from "@/lib/argo/carts";
+import type { ArgoEmployee } from "@/lib/argo/types";
 import {
   equivalentArgoBadge,
   getArgoEmployee,
@@ -182,12 +183,14 @@ export async function POST(request: Request) {
     }
   }
 
-  const sessionBadge = session.rfidBadge;
-  const collectorBadge =
-    storedProviderBadge ||
-    (typeof sessionBadge === "string" && /^\d{1,20}$/.test(sessionBadge)
-      ? sessionBadge
-      : null);
+  const sessionBadge =
+    typeof session.rfidBadge === "string" &&
+    /^\d{1,20}$/.test(session.rfidBadge)
+      ? session.rfidBadge
+      : null;
+  const collectorBadge = session.employee
+    ? storedProviderBadge || sessionBadge
+    : sessionBadge || storedProviderBadge;
   const writesEnabled = getArgoConfig().writesEnabled;
   const hasCollectorBadge = typeof collectorBadge === "string";
   const canReleaseCart = canViewStatus && writesEnabled && hasCollectorBadge;
@@ -279,7 +282,7 @@ export async function POST(request: Request) {
         );
       }
 
-      let collector;
+      let collector: ArgoEmployee;
       let adminCollectorCreated = false;
       let adminCollectorProfileId: number | null = null;
 
@@ -292,6 +295,7 @@ export async function POST(request: Request) {
           badge: collectorBadge,
           firstName: session.customer.firstName,
           lastName: session.customer.lastName,
+          allowCreate: capability?.isCompanyAdmin === true,
         });
         collector = ensured.employee;
         adminCollectorCreated = ensured.created;
