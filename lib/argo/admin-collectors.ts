@@ -64,7 +64,7 @@ export async function ensureArgoAdminCollector(input: {
 
   if (!input.allowCreate) {
     throw new ArgoApiError(
-      "Only a company admin may provision a missing NEXT ARGO admin collector.",
+      "Only an authorised locker manager may provision a missing NEXT ARGO admin collector.",
       "FORBIDDEN",
       403,
     );
