@@ -51,6 +51,7 @@ export async function ensureArgoAdminCollector(input: {
   badge: string;
   firstName: string;
   lastName: string;
+  allowCreate: boolean;
 }): Promise<EnsuredArgoAdminCollector> {
   const existing = await resolveArgoEmployeeByBadge(input.badge);
   if (existing) {
@@ -59,6 +60,14 @@ export async function ensureArgoAdminCollector(input: {
       created: false,
       profileId: existing.profileId,
     };
+  }
+
+  if (!input.allowCreate) {
+    throw new ArgoApiError(
+      "Only a company admin may provision a missing NEXT ARGO admin collector.",
+      "FORBIDDEN",
+      403,
+    );
   }
 
   const profileId = await resolveArgoProfileIdByName("Admin");
