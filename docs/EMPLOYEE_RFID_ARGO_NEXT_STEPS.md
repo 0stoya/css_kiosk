@@ -1714,3 +1714,68 @@ Legacy/non-Employee admin sessions retain badge lookup fallback.
 The route now distinguishes unknown/inactive/plant mismatch/Employee ID mismatch/badge mismatch so the next remote acceptance result is actionable.
 
 Also corrected the Locker UI copy: after #40 the ARGO badge is retained server-side as provider metadata and is not exposed to browser state.
+
+
+### 23 Sep 2026 — legacy company-admin ARGO collector bootstrap
+
+Clarification from live acceptance: the card currently used for Open locker is an old company-admin RFID account created before canonical Employee→ARGO enrollment. It is acting as the locker operator, not as the order beneficiary.
+
+Updated css_kiosk PR #43 to support this separately from canonical Employees.
+
+Canonical Employee path:
+
+```text
+session Employee
+→ stored argo_employee_id
+→ get_employee
+→ active/plant/ID/badge validation
+→ request_cart_withdrawal
+```
+
+Legacy company-admin path:
+
+```text
+admin RFID
+→ stored admin ARGO collector mapping?
+   ├─ yes → validate by argo_employee_id
+   └─ no → exact badge lookup
+           ├─ found → persist mapping
+           └─ missing
+               → discover existing ARGO profile named Admin
+               → create ARGO employee for signed-in Magento admin
+               → persist mapping
+→ request_cart_withdrawal
+```
+
+The admin mapping is separate from canonical Employee identity:
+
+```text
+admin_argo_collectors
+company_id
+company_user_id
+customer_id
+argo_employee_id
+provider_badge
+plant_id
+profile_id
+last_verified_at
+created_at
+updated_at
+```
+
+No fake CSS Employee is created for a locker administrator.
+
+Automatic creation of a missing ARGO admin collector requires `is_company_admin=true`; broad Locker read capabilities alone are not sufficient to receive an ARGO Admin profile.
+
+Live ARGO evidence already shows one existing profile:
+
+```text
+profile.id   17
+profile.name Admin
+```
+
+The implementation does not hard-code 17. It discovers exactly one distinct profile ID named `Admin` from live ARGO employee data.
+
+The known Customer API exposes `create_employee` but no `create_profile`. If no Admin profile is discoverable, css_kiosk fails closed rather than attempting to invent/create one.
+
+Important historical-card limitation: old kiosk credentials stored only the SHA-256 credential hash. If no live RFID session or durable provider badge exists for a legacy admin card, the original numeric badge cannot be recovered from the hash. The bootstrap therefore occurs on the next live card sign-in/release attempt, after which the ARGO admin mapping and provider badge are durable server-side.
