@@ -356,7 +356,7 @@ export function LockerAdminPanel({
                 </button>
               </div>
               <p className={styles.releaseHint}>
-                Your sign-in RFID is kept only in the current in-memory kiosk session and is sent transiently to ARGO for this request. It is not written to kiosk storage.
+                The Employee ARGO badge is retained server-side as provider metadata and is never exposed to browser state. The linked ARGO Employee and plant are revalidated before a release request is sent.
               </p>
               {releaseError ? (
                 <p className={styles.openError} role="alert">{releaseError}</p>
