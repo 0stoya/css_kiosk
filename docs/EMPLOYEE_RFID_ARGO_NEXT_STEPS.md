@@ -1802,3 +1802,25 @@ The missing ARGO collector bootstrap now uses the same server-side Locker-manage
 This does not widen Locker access; it removes a contradictory secondary gate.
 
 Existing safeguards remain: write gate, exact badge lookup, dynamic existing Admin profile discovery, active/plant/badge validation, cart/terminal validation, and ARGO machine-side confirmation.
+
+
+### 23 Sep 2026 — provider 5xx on admin collector bootstrap
+
+Live acceptance after #44 reached a real NEXT ARGO provider write but the UI only surfaced:
+
+```text
+NEXT ARGO returned an unexpected provider error.
+```
+
+Opened css_kiosk PR #45:
+
+```text
+Fix ARGO admin collector create payload and diagnostics
+```
+
+Two changes:
+
+1. `create_employee` no longer sends unknown optional relationship IDs as zero. Optional fields are omitted unless a real positive provider ID is known. Legacy admin bootstrap now sends only badge, names, plant and discovered Admin profile.
+2. Structured provider error message/code are retained internally and exposed only through the trusted Locker-management endpoint, with explicit failing-stage context (admin badge lookup / Admin profile discovery / admin Employee creation / withdrawal request).
+
+The next retry should either complete admin provisioning and proceed to withdrawal, or show the exact provider error needed to finish the contract.
