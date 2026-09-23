@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { ArgoApiError } from "@/lib/argo/client";
 import { getArgoConfig } from "@/lib/argo/config";
 import { getArgoCart } from "@/lib/argo/carts";
-import { resolveArgoEmployeeByBadge } from "@/lib/argo/employees";
+import {
+  equivalentArgoBadge,
+  getArgoEmployee,
+  resolveArgoEmployeeByBadge,
+} from "@/lib/argo/employees";
 import { getKioskLockerAdminStatus } from "@/lib/argo/locker-admin";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
 import { requestArgoCartWithdrawal } from "@/lib/argo/withdrawals";
@@ -258,13 +262,38 @@ export async function POST(request: Request) {
         );
       }
 
-      const collector = await resolveArgoEmployeeByBadge(collectorBadge);
-      if (!collector || collector.active === false) {
+      const collector = session.employee
+        ? await getArgoEmployee(session.employee.argoEmployeeId)
+        : await resolveArgoEmployeeByBadge(collectorBadge);
+
+      if (!collector) {
         return NextResponse.json(
           {
             ok: false,
             code: "LOCKER_COLLECTOR_UNKNOWN",
-            error: "The collector badge is not an active NEXT ARGO employee.",
+            error: "The collector badge is not known to NEXT ARGO.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (collector.active === false) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_INACTIVE",
+            error: "The linked NEXT ARGO employee is inactive.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (collector.plantId !== getArgoConfig().plantId) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_PLANT_MISMATCH",
+            error: "The linked NEXT ARGO employee belongs to a different plant.",
           },
           { status: 409 },
         );
@@ -272,22 +301,43 @@ export async function POST(request: Request) {
 
       if (
         session.employee &&
-        collector.id === session.employee.argoEmployeeId &&
-        collector.plantId === session.employee.argoPlantId
+        collector.id !== session.employee.argoEmployeeId
       ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_ID_MISMATCH",
+            error: "The linked NEXT ARGO employee does not match this kiosk Employee.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (!equivalentArgoBadge(collector.badge, collectorBadge)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_BADGE_MISMATCH",
+            error: "The stored ARGO badge does not match the linked NEXT ARGO employee.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (session.employee) {
         rememberEmployeeProviderBadge({
           companyId: session.employee.companyId,
           employeeId: session.employee.employeeId,
           providerEmployeeId: collector.id,
           plantId: collector.plantId,
-          argoBadge: collectorBadge,
+          argoBadge: collector.badge,
         });
       }
 
       const withdrawal = await requestArgoCartWithdrawal({
         terminalId: terminal.id,
         cartId,
-        userBadge: collectorBadge,
+        userBadge: collector.badge,
       });
 
       return NextResponse.json({
