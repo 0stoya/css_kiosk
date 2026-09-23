@@ -1824,3 +1824,25 @@ Two changes:
 2. Structured provider error message/code are retained internally and exposed only through the trusted Locker-management endpoint, with explicit failing-stage context (admin badge lookup / Admin profile discovery / admin Employee creation / withdrawal request).
 
 The next retry should either complete admin provisioning and proceed to withdrawal, or show the exact provider error needed to finish the contract.
+
+
+### 23 Sep 2026 — NEXT ARGO database_unavailable during live acceptance
+
+Live Locker acceptance after #45 returned the structured provider error:
+
+```text
+database_unavailable
+The requested database is temporarily unavailable.
+```
+
+This is a provider-side temporary database outage. CSS correctly stopped before any physical locker action.
+
+Opened css_kiosk PR #46:
+
+```text
+Handle NEXT ARGO database outages as retryable
+```
+
+`database_unavailable` is now mapped to ARGO `UNAVAILABLE` / HTTP 503 and the trusted Locker UI explicitly states that no locker action was taken and the operation may be retried later.
+
+No automatic write retry is added. Admin provisioning remains idempotent across manual retries because each attempt first performs an exact badge lookup and reuses an existing provider Employee if one was created during an earlier ambiguous attempt.
