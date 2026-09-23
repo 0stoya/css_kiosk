@@ -49,6 +49,17 @@ export function normalizeArgoBadge(value: string) {
   return badge;
 }
 
+function positiveInput(value: number, label: string) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new ArgoApiError(
+      `${label} must be a safe positive integer.`,
+      "INVALID_REQUEST",
+      400,
+    );
+  }
+  return value;
+}
+
 function providerPositiveInteger(value: unknown, context: string) {
   if (
     typeof value === "number" &&
@@ -211,14 +222,29 @@ export async function createArgoEmployee(
     first_name: input.firstName.trim(),
     last_name: input.lastName.trim(),
     plant_id: config.plantId,
-    department_id: input.departmentId ?? 0,
-    employee_group_id: input.employeeGroupId ?? 0,
-    job_id: input.jobId ?? 0,
-    qualification_id: input.qualificationId ?? 0,
-    cost_centre_id: input.costCentreId ?? 0,
-    profile_id: input.profileId ?? 0,
-    band_id: input.bandId ?? 0,
   };
+
+  if (input.departmentId !== undefined) {
+    parameters.department_id = positiveInput(input.departmentId, "department_id");
+  }
+  if (input.employeeGroupId !== undefined) {
+    parameters.employee_group_id = positiveInput(input.employeeGroupId, "employee_group_id");
+  }
+  if (input.jobId !== undefined) {
+    parameters.job_id = positiveInput(input.jobId, "job_id");
+  }
+  if (input.qualificationId !== undefined) {
+    parameters.qualification_id = positiveInput(input.qualificationId, "qualification_id");
+  }
+  if (input.costCentreId !== undefined) {
+    parameters.cost_centre_id = positiveInput(input.costCentreId, "cost_centre_id");
+  }
+  if (input.profileId !== undefined) {
+    parameters.profile_id = positiveInput(input.profileId, "profile_id");
+  }
+  if (input.bandId !== undefined) {
+    parameters.band_id = positiveInput(input.bandId, "band_id");
+  }
 
   if (!parameters.first_name || !parameters.last_name) {
     throw new ArgoApiError(
