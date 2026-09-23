@@ -76,6 +76,8 @@ export type ArgoEmployee = {
   firstName: string | null;
   lastName: string | null;
   employeeNumber: string | null;
+  profileId: number | null;
+  profileName: string | null;
   active: boolean | null;
   modifiedAt: string | null;
   raw: Record<string, unknown>;
