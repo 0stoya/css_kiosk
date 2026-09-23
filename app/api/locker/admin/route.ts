@@ -256,6 +256,7 @@ export async function POST(request: Request) {
       );
     }
 
+    let providerStage = "locker validation";
     try {
       const terminal = await resolveConfiguredArgoTerminal();
       const cart = await getArgoCart(cartId);
@@ -291,6 +292,7 @@ export async function POST(request: Request) {
       } else if (storedAdminCollector) {
         collector = await getArgoEmployee(storedAdminCollector.argoEmployeeId);
       } else {
+        providerStage = "admin collector provisioning";
         const ensured = await ensureArgoAdminCollector({
           badge: collectorBadge,
           firstName: session.customer.firstName,
@@ -385,6 +387,7 @@ export async function POST(request: Request) {
         });
       }
 
+      providerStage = "withdrawal request";
       const withdrawal = await requestArgoCartWithdrawal({
         terminalId: terminal.id,
         cartId,
@@ -411,13 +414,19 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       if (error instanceof ArgoApiError) {
+        const publicError =
+          error.code === "PROVIDER_ERROR" && error.providerMessage
+            ? `ARGO ${providerStage} failed: ${error.providerMessage}`
+            : error.message;
+
         return NextResponse.json(
           {
             ok: false,
             code: `LOCKER_${error.code}`,
-            error: error.message,
+            error: publicError,
             providerCode: error.providerCode,
             providerMessage: error.providerMessage,
+            providerStage,
             retryAfterSeconds: error.retryAfterSeconds,
           },
           { status: error.status },
