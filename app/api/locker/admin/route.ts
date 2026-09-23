@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureArgoAdminCollector } from "@/lib/argo/admin-collectors";
 import { ArgoApiError } from "@/lib/argo/client";
 import { getArgoConfig } from "@/lib/argo/config";
 import { getArgoCart } from "@/lib/argo/carts";
@@ -14,6 +15,11 @@ import {
   KioskDeviceRequestError,
   readTrustedJsonRequest,
 } from "@/lib/kiosk/device-request";
+import {
+  getAdminArgoCollector,
+  recordAdminArgoCollector,
+  type AdminArgoCollectorLink,
+} from "@/lib/kiosk/admin-argo-collector-store";
 import {
   getEmployeeProviderLink,
   rememberEmployeeProviderBadge,
@@ -145,6 +151,7 @@ export async function POST(request: Request) {
 
   const canViewStatus = capability?.canViewLockerStatus === true;
   let storedProviderBadge: string | null = null;
+  let storedAdminCollector: AdminArgoCollectorLink | null = null;
 
   if (session.employee) {
     try {
@@ -163,6 +170,16 @@ export async function POST(request: Request) {
       // The current in-memory RFID remains a safe fallback for this live
       // session if durable provider storage is temporarily unavailable.
     }
+  } else {
+    try {
+      storedAdminCollector = getAdminArgoCollector({
+        companyId: company.companyId,
+        companyUserId: company.companyUserId,
+      });
+      storedProviderBadge = storedAdminCollector?.argoBadge || null;
+    } catch {
+      // A currently scanned RFID can bootstrap the admin provider mapping.
+    }
   }
 
   const sessionBadge = session.rfidBadge;
@@ -177,7 +194,7 @@ export async function POST(request: Request) {
   const releaseUnavailableReason = !writesEnabled
     ? "ARGO writes disabled"
     : !hasCollectorBadge
-      ? "Employee ARGO badge unavailable"
+      ? "ARGO collector badge unavailable"
       : null;
 
   if (payload.action === "capability") {
@@ -230,7 +247,7 @@ export async function POST(request: Request) {
           error:
             cartId === null
               ? "Enter a valid loaded cart ID."
-              : "This Employee does not have an ARGO badge available for collection.",
+              : "This account does not have an ARGO badge available for collection.",
         },
         { status: 400 },
       );
@@ -262,9 +279,25 @@ export async function POST(request: Request) {
         );
       }
 
-      const collector = session.employee
-        ? await getArgoEmployee(session.employee.argoEmployeeId)
-        : await resolveArgoEmployeeByBadge(collectorBadge);
+      let collector;
+      let adminCollectorCreated = false;
+      let adminCollectorProfileId: number | null = null;
+
+      if (session.employee) {
+        collector = await getArgoEmployee(session.employee.argoEmployeeId);
+      } else if (storedAdminCollector) {
+        collector = await getArgoEmployee(storedAdminCollector.argoEmployeeId);
+      } else {
+        const ensured = await ensureArgoAdminCollector({
+          badge: collectorBadge,
+          firstName: session.customer.firstName,
+          lastName: session.customer.lastName,
+        });
+        collector = ensured.employee;
+        adminCollectorCreated = ensured.created;
+        adminCollectorProfileId =
+          ensured.profileId ?? ensured.employee.profileId;
+      }
 
       if (!collector) {
         return NextResponse.json(
@@ -332,6 +365,20 @@ export async function POST(request: Request) {
           plantId: collector.plantId,
           argoBadge: collector.badge,
         });
+      } else {
+        storedAdminCollector = recordAdminArgoCollector({
+          companyId: company.companyId,
+          companyUserId: company.companyUserId,
+          customerId: session.customer.customerId,
+          argoEmployeeId: collector.id,
+          argoBadge: collector.badge,
+          plantId: collector.plantId,
+          profileId:
+            adminCollectorProfileId ??
+            collector.profileId ??
+            storedAdminCollector?.profileId ??
+            null,
+        });
       }
 
       const withdrawal = await requestArgoCartWithdrawal({
@@ -355,6 +402,7 @@ export async function POST(request: Request) {
           terminalId: withdrawal.terminalId,
           cartId: withdrawal.cartId,
           message: withdrawal.message,
+          collectorCreated: adminCollectorCreated,
         },
       });
     } catch (error) {
