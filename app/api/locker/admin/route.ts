@@ -416,6 +416,8 @@ export async function POST(request: Request) {
             ok: false,
             code: `LOCKER_${error.code}`,
             error: error.message,
+            providerCode: error.providerCode,
+            providerMessage: error.providerMessage,
             retryAfterSeconds: error.retryAfterSeconds,
           },
           { status: error.status },
