@@ -144,6 +144,17 @@ function mappedError(input: {
     );
   }
 
+  if (input.providerCode === "database_unavailable") {
+    return new ArgoApiError(
+      input.providerMessage || "The requested NEXT ARGO database is temporarily unavailable.",
+      "UNAVAILABLE",
+      503,
+      input.providerCode,
+      null,
+      input.providerMessage,
+    );
+  }
+
   return new ArgoApiError(
     "NEXT ARGO returned an unexpected provider error.",
     "PROVIDER_ERROR",
