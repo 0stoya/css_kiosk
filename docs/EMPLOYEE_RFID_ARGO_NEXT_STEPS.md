@@ -1679,3 +1679,38 @@ The parsed value is still required to be a safe positive integer and must equal 
 PR #41 diagnostic was also updated to report whether the provider used `plant.id`, legacy `plant_id`, or no usable plant field.
 
 This means the earlier #39 numeric-string fix was not the actual live issue; the live mismatch was nested object vs top-level field.
+
+
+### 23 Sep 2026 — collector badge lookup replaced by stable ARGO employee ID
+
+Real-card Open locker testing progressed past the nested plant parser and then stopped at:
+
+```text
+The collector badge is not an active NEXT ARGO employee.
+```
+
+Opened css_kiosk PR #43:
+
+```text
+Validate locker collector by ARGO employee ID
+```
+
+For canonical Employee sessions, Open locker no longer re-discovers the Employee through `list_employees(badge=...)`.
+
+The normal path is now:
+
+```text
+session.employee.argoEmployeeId
+→ get_employee(id)
+→ require active
+→ require configured plant
+→ require Employee ID match
+→ require provider badge equivalence
+→ request_cart_withdrawal using provider-returned badge
+```
+
+Legacy/non-Employee admin sessions retain badge lookup fallback.
+
+The route now distinguishes unknown/inactive/plant mismatch/Employee ID mismatch/badge mismatch so the next remote acceptance result is actionable.
+
+Also corrected the Locker UI copy: after #40 the ARGO badge is retained server-side as provider metadata and is not exposed to browser state.
