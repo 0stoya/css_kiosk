@@ -91,7 +91,7 @@ function providerBadge(value: unknown, context: string) {
   );
 }
 
-function equivalentBadge(left: string, right: string) {
+export function equivalentArgoBadge(left: string, right: string) {
   const normalise = (value: string) => value.replace(/^0+(?=\d)/, "");
   return normalise(left) === normalise(right);
 }
@@ -176,7 +176,7 @@ export async function resolveArgoEmployeeByBadge(
 
   const matches = page.data.filter(
     (item) =>
-      item.plantId === config.plantId && equivalentBadge(item.badge, badge),
+      item.plantId === config.plantId && equivalentArgoBadge(item.badge, badge),
   );
 
   if (matches.length > 1) {
