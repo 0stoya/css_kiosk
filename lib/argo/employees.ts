@@ -91,7 +91,7 @@ function providerBadge(value: unknown, context: string) {
   );
 }
 
-function equivalentBadge(left: string, right: string) {
+export function equivalentArgoBadge(left: string, right: string) {
   const normalise = (value: string) => value.replace(/^0+(?=\d)/, "");
   return normalise(left) === normalise(right);
 }
@@ -101,6 +101,10 @@ function employee(value: unknown, context: string): ArgoEmployee {
   const plant =
     row.plant !== undefined && row.plant !== null
       ? record(row.plant, `${context}.plant`)
+      : null;
+  const profile =
+    row.profile !== undefined && row.profile !== null
+      ? record(row.profile, `${context}.profile`)
       : null;
   const plantIdValue = plant?.id ?? row.plant_id;
   const plantIdContext =
@@ -118,6 +122,14 @@ function employee(value: unknown, context: string): ArgoEmployee {
     firstName: nullableText(row.first_name, `${context}.first_name`),
     lastName: nullableText(row.last_name, `${context}.last_name`),
     employeeNumber: nullableText(row.employee_number, `${context}.employee_number`),
+    profileId:
+      profile?.id === undefined || profile.id === null
+        ? null
+        : providerPositiveInteger(profile.id, `${context}.profile.id`),
+    profileName:
+      profile?.name === undefined || profile.name === null
+        ? null
+        : nullableText(profile.name, `${context}.profile.name`),
     active: typeof row.active === "boolean" ? row.active : null,
     modifiedAt: typeof row.modified_at === "string" ? row.modified_at : null,
     raw: row,
@@ -176,7 +188,7 @@ export async function resolveArgoEmployeeByBadge(
 
   const matches = page.data.filter(
     (item) =>
-      item.plantId === config.plantId && equivalentBadge(item.badge, badge),
+      item.plantId === config.plantId && equivalentArgoBadge(item.badge, badge),
   );
 
   if (matches.length > 1) {
@@ -240,4 +252,54 @@ export async function ensureArgoEmployeeForBadge(
 
   const created = await createArgoEmployee(input);
   return { employee: created, created: true };
+}
+
+
+export async function resolveArgoProfileIdByName(
+  profileName: string,
+): Promise<number> {
+  const requested = profileName.trim().toLowerCase();
+  if (!requested) {
+    throw new ArgoApiError(
+      "NEXT ARGO profile name is required.",
+      "INVALID_REQUEST",
+      400,
+    );
+  }
+
+  const config = getArgoConfig();
+  const page = await listArgoEmployees({
+    plantId: config.plantId,
+    status: "all",
+    perPage: 500,
+  });
+
+  const ids = new Set(
+    page.data
+      .filter(
+        (item) =>
+          item.plantId === config.plantId &&
+          item.profileId !== null &&
+          item.profileName?.trim().toLowerCase() === requested,
+      )
+      .map((item) => item.profileId as number),
+  );
+
+  if (ids.size === 0) {
+    throw new ArgoApiError(
+      `No NEXT ARGO profile named ${profileName.trim()} is visible in the configured plant.`,
+      "NOT_FOUND",
+      404,
+    );
+  }
+
+  if (ids.size > 1) {
+    throw new ArgoApiError(
+      `NEXT ARGO exposes more than one profile ID named ${profileName.trim()} in the configured plant.`,
+      "CORRELATION_MISMATCH",
+      409,
+    );
+  }
+
+  return [...ids][0];
 }

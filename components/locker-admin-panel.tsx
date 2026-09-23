@@ -72,6 +72,7 @@ type LockerAdminResponse = {
     terminalId: number;
     cartId: number;
     message: string;
+    collectorCreated?: boolean;
   };
 };
 
@@ -356,7 +357,7 @@ export function LockerAdminPanel({
                 </button>
               </div>
               <p className={styles.releaseHint}>
-                Your sign-in RFID is kept only in the current in-memory kiosk session and is sent transiently to ARGO for this request. It is not written to kiosk storage.
+                The collector ARGO badge is retained server-side as provider metadata and is never exposed to browser state. Linked Employees are revalidated by ARGO employee ID; legacy company admins can be provisioned into the existing ARGO Admin profile when required.
               </p>
               {releaseError ? (
                 <p className={styles.openError} role="alert">{releaseError}</p>
@@ -366,6 +367,9 @@ export function LockerAdminPanel({
                   <strong>Open request queued</strong>
                   <span>Cart {releaseResult.cartId} · {releaseResult.phase} / {releaseResult.status}</span>
                   <span>{releaseResult.message}</span>
+                  {releaseResult.collectorCreated ? (
+                    <span>ARGO admin collector created for this company admin.</span>
+                  ) : null}
                   <code>{releaseResult.requestKey}</code>
                   <small>Go to the ARGO machine now and confirm the request on its screen.</small>
                 </div>

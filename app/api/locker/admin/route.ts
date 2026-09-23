@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { ensureArgoAdminCollector } from "@/lib/argo/admin-collectors";
 import { ArgoApiError } from "@/lib/argo/client";
 import { getArgoConfig } from "@/lib/argo/config";
 import { getArgoCart } from "@/lib/argo/carts";
-import { resolveArgoEmployeeByBadge } from "@/lib/argo/employees";
+import type { ArgoEmployee } from "@/lib/argo/types";
+import {
+  equivalentArgoBadge,
+  getArgoEmployee,
+  resolveArgoEmployeeByBadge,
+} from "@/lib/argo/employees";
 import { getKioskLockerAdminStatus } from "@/lib/argo/locker-admin";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
 import { requestArgoCartWithdrawal } from "@/lib/argo/withdrawals";
@@ -10,6 +16,11 @@ import {
   KioskDeviceRequestError,
   readTrustedJsonRequest,
 } from "@/lib/kiosk/device-request";
+import {
+  getAdminArgoCollector,
+  recordAdminArgoCollector,
+  type AdminArgoCollectorLink,
+} from "@/lib/kiosk/admin-argo-collector-store";
 import {
   getEmployeeProviderLink,
   rememberEmployeeProviderBadge,
@@ -141,6 +152,7 @@ export async function POST(request: Request) {
 
   const canViewStatus = capability?.canViewLockerStatus === true;
   let storedProviderBadge: string | null = null;
+  let storedAdminCollector: AdminArgoCollectorLink | null = null;
 
   if (session.employee) {
     try {
@@ -159,21 +171,33 @@ export async function POST(request: Request) {
       // The current in-memory RFID remains a safe fallback for this live
       // session if durable provider storage is temporarily unavailable.
     }
+  } else {
+    try {
+      storedAdminCollector = getAdminArgoCollector({
+        companyId: company.companyId,
+        companyUserId: company.companyUserId,
+      });
+      storedProviderBadge = storedAdminCollector?.argoBadge || null;
+    } catch {
+      // A currently scanned RFID can bootstrap the admin provider mapping.
+    }
   }
 
-  const sessionBadge = session.rfidBadge;
-  const collectorBadge =
-    storedProviderBadge ||
-    (typeof sessionBadge === "string" && /^\d{1,20}$/.test(sessionBadge)
-      ? sessionBadge
-      : null);
+  const sessionBadge =
+    typeof session.rfidBadge === "string" &&
+    /^\d{1,20}$/.test(session.rfidBadge)
+      ? session.rfidBadge
+      : null;
+  const collectorBadge = session.employee
+    ? storedProviderBadge || sessionBadge
+    : sessionBadge || storedProviderBadge;
   const writesEnabled = getArgoConfig().writesEnabled;
   const hasCollectorBadge = typeof collectorBadge === "string";
   const canReleaseCart = canViewStatus && writesEnabled && hasCollectorBadge;
   const releaseUnavailableReason = !writesEnabled
     ? "ARGO writes disabled"
     : !hasCollectorBadge
-      ? "Employee ARGO badge unavailable"
+      ? "ARGO collector badge unavailable"
       : null;
 
   if (payload.action === "capability") {
@@ -226,7 +250,7 @@ export async function POST(request: Request) {
           error:
             cartId === null
               ? "Enter a valid loaded cart ID."
-              : "This Employee does not have an ARGO badge available for collection.",
+              : "This account does not have an ARGO badge available for collection.",
         },
         { status: 400 },
       );
@@ -258,13 +282,55 @@ export async function POST(request: Request) {
         );
       }
 
-      const collector = await resolveArgoEmployeeByBadge(collectorBadge);
-      if (!collector || collector.active === false) {
+      let collector: ArgoEmployee;
+      let adminCollectorCreated = false;
+      let adminCollectorProfileId: number | null = null;
+
+      if (session.employee) {
+        collector = await getArgoEmployee(session.employee.argoEmployeeId);
+      } else if (storedAdminCollector) {
+        collector = await getArgoEmployee(storedAdminCollector.argoEmployeeId);
+      } else {
+        const ensured = await ensureArgoAdminCollector({
+          badge: collectorBadge,
+          firstName: session.customer.firstName,
+          lastName: session.customer.lastName,
+          allowCreate: capability?.isCompanyAdmin === true,
+        });
+        collector = ensured.employee;
+        adminCollectorCreated = ensured.created;
+        adminCollectorProfileId =
+          ensured.profileId ?? ensured.employee.profileId;
+      }
+
+      if (!collector) {
         return NextResponse.json(
           {
             ok: false,
             code: "LOCKER_COLLECTOR_UNKNOWN",
-            error: "The collector badge is not an active NEXT ARGO employee.",
+            error: "The collector badge is not known to NEXT ARGO.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (collector.active === false) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_INACTIVE",
+            error: "The linked NEXT ARGO employee is inactive.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (collector.plantId !== getArgoConfig().plantId) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_PLANT_MISMATCH",
+            error: "The linked NEXT ARGO employee belongs to a different plant.",
           },
           { status: 409 },
         );
@@ -272,22 +338,57 @@ export async function POST(request: Request) {
 
       if (
         session.employee &&
-        collector.id === session.employee.argoEmployeeId &&
-        collector.plantId === session.employee.argoPlantId
+        collector.id !== session.employee.argoEmployeeId
       ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_ID_MISMATCH",
+            error: "The linked NEXT ARGO employee does not match this kiosk Employee.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (!equivalentArgoBadge(collector.badge, collectorBadge)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_COLLECTOR_BADGE_MISMATCH",
+            error: "The stored ARGO badge does not match the linked NEXT ARGO employee.",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (session.employee) {
         rememberEmployeeProviderBadge({
           companyId: session.employee.companyId,
           employeeId: session.employee.employeeId,
           providerEmployeeId: collector.id,
           plantId: collector.plantId,
-          argoBadge: collectorBadge,
+          argoBadge: collector.badge,
+        });
+      } else {
+        storedAdminCollector = recordAdminArgoCollector({
+          companyId: company.companyId,
+          companyUserId: company.companyUserId,
+          customerId: session.customer.customerId,
+          argoEmployeeId: collector.id,
+          argoBadge: collector.badge,
+          plantId: collector.plantId,
+          profileId:
+            adminCollectorProfileId ??
+            collector.profileId ??
+            storedAdminCollector?.profileId ??
+            null,
         });
       }
 
       const withdrawal = await requestArgoCartWithdrawal({
         terminalId: terminal.id,
         cartId,
-        userBadge: collectorBadge,
+        userBadge: collector.badge,
       });
 
       return NextResponse.json({
@@ -305,6 +406,7 @@ export async function POST(request: Request) {
           terminalId: withdrawal.terminalId,
           cartId: withdrawal.cartId,
           message: withdrawal.message,
+          collectorCreated: adminCollectorCreated,
         },
       });
     } catch (error) {
