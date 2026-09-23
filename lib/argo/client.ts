@@ -114,10 +114,24 @@ function mappedError(input: {
     );
   }
   if (input.status === 403) {
-    return new ArgoApiError(message, "FORBIDDEN", 503, input.providerCode);
+    return new ArgoApiError(
+      message,
+      "FORBIDDEN",
+      503,
+      input.providerCode,
+      null,
+      input.providerMessage,
+    );
   }
   if (input.status === 404) {
-    return new ArgoApiError(message, "NOT_FOUND", 404, input.providerCode);
+    return new ArgoApiError(
+      message,
+      "NOT_FOUND",
+      404,
+      input.providerCode,
+      null,
+      input.providerMessage,
+    );
   }
   if (input.status === 429) {
     return new ArgoApiError(
