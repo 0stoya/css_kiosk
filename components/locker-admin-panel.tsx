@@ -368,7 +368,7 @@ export function LockerAdminPanel({
                   <span>Cart {releaseResult.cartId} · {releaseResult.phase} / {releaseResult.status}</span>
                   <span>{releaseResult.message}</span>
                   {releaseResult.collectorCreated ? (
-                    <span>ARGO admin collector created for this company admin.</span>
+                    <span>ARGO admin collector created for this authorised locker manager.</span>
                   ) : null}
                   <code>{releaseResult.requestKey}</code>
                   <small>Go to the ARGO machine now and confirm the request on its screen.</small>
