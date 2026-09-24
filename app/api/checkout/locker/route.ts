@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
+import { ArgoApiError } from "@/lib/argo/client";
+import { getArgoOrderBridgeConfig } from "@/lib/argo/order-bridge-config";
+import {
+  finaliseArgoOrderBridge,
+  prepareArgoOrderPreflight,
+  type ArgoOrderPreflight,
+} from "@/lib/argo/order-bridge";
 import {
   KioskDeviceRequestError,
   readTrustedJsonRequest,
 } from "@/lib/kiosk/device-request";
 import { getKioskSessionId } from "@/lib/kiosk/session-cookie";
 import { getKioskSession } from "@/lib/kiosk/session-store";
+import {
+  getAuthenticatedBasket,
+  MagentoCartError,
+} from "@/lib/magento/cart";
 import {
   MagentoLockerCheckoutError,
   prepareAuthenticatedLockerCheckout,
@@ -171,12 +182,103 @@ export async function POST(request: Request) {
     );
   }
 
+  let argoPreflight: ArgoOrderPreflight | null = null;
+  try {
+    const bridgeConfig = getArgoOrderBridgeConfig();
+    if (bridgeConfig.enabled) {
+      if (!session.employee) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_ARGO_EMPLOYEE_REQUIRED",
+            error: "This locker order requires an enrolled Employee RFID.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const basket = await getAuthenticatedBasket(session.magentoToken);
+      argoPreflight = await prepareArgoOrderPreflight({
+        basket,
+        argoEmployeeId: session.employee.argoEmployeeId,
+      });
+    }
+  } catch (error) {
+    if (error instanceof ArgoApiError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: `LOCKER_ARGO_${error.code}`,
+          error: error.message,
+        },
+        { status: error.status },
+      );
+    }
+    if (error instanceof MagentoCartError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: `LOCKER_BASKET_${error.code}`,
+          error:
+            error.code === "REJECTED"
+              ? error.message
+              : "The basket could not be prepared for locker fulfilment.",
+        },
+        {
+          status:
+            error.code === "REJECTED"
+              ? 409
+              : error.code === "UNAVAILABLE"
+                ? 503
+                : 502,
+        },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "LOCKER_ARGO_NOT_CONFIGURED",
+        error:
+          error instanceof Error
+            ? error.message
+            : "NEXT ARGO locker fulfilment is not configured.",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const submission = await submitAuthenticatedLockerOrder({
       token: session.magentoToken,
     });
 
-    return NextResponse.json({ ok: true, checkout, submission });
+    let argoFulfilment;
+    try {
+      argoFulfilment = await finaliseArgoOrderBridge({
+        preflight: argoPreflight,
+        creditOrderNumber:
+          submission.creditOrderNumber || `ID-${submission.creditOrderId}`,
+        magentoOrderNumber: submission.orderNumber,
+        oglOrderNumber: submission.oglOrderNumber,
+      });
+    } catch (error) {
+      argoFulfilment = {
+        status: "FAILED" as const,
+        magentoOrderNumber: submission.orderNumber,
+        error:
+          error instanceof Error
+            ? error.message
+            : "NEXT ARGO fulfilment snapshot could not be saved.",
+      };
+    }
+
+    return NextResponse.json({
+      ok: true,
+      checkout,
+      submission,
+      argoFulfilment,
+    });
   } catch (error) {
     if (error instanceof MagentoLockerOrderError) return orderFailure(error);
 
