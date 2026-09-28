@@ -7,7 +7,6 @@ import type { ArgoEmployee } from "@/lib/argo/types";
 import {
   equivalentArgoBadge,
   getArgoEmployee,
-  resolveArgoEmployeeByBadge,
 } from "@/lib/argo/employees";
 import { getKioskLockerAdminStatus } from "@/lib/argo/locker-admin";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
