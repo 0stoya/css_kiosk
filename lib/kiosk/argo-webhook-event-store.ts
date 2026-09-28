@@ -211,6 +211,7 @@ export function recordArgoWebhookEvent(input: {
         cart_id,
         terminal_id,
         project_number,
+        vano,
         request_key,
         badge,
         status,
