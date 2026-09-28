@@ -848,9 +848,9 @@ export function KioskAuthDemo() {
             <div className="success-badge">✓</div>
             <p className="eyebrow">Employee RFID enrolled</p>
             <h1>{employeeEnrollment.firstName} {employeeEnrollment.lastName}</h1>
-            <p className="lead">
-              This RFID now resolves the Employee's Magento account, canonical CSS Employee and NEXT ARGO employee.
-            </p>
+<p className="lead">
+  This RFID now resolves the Employee&apos;s Magento account, canonical CSS Employee and NEXT ARGO employee.
+</p>
             <div className="customer-card compact">
               <strong>{employeeEnrollment.employeeCode || `Employee #${employeeEnrollment.employeeId}`}</strong>
               {message ? <span>{message}</span> : null}
