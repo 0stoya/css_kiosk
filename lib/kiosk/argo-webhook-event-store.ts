@@ -12,6 +12,7 @@ export type StoredArgoWebhookEvent = {
   cartId: number | null;
   terminalId: number | null;
   projectNumber: string | null;
+  vano: string | null;
   requestKey: string | null;
   badge: string | null;
   status: string | null;
@@ -30,6 +31,7 @@ type EventRow = {
   cart_id: number | null;
   terminal_id: number | null;
   project_number: string | null;
+  vano: string | null;
   request_key: string | null;
   badge: string | null;
   status: string | null;
@@ -82,6 +84,7 @@ function getDatabase() {
       cart_id INTEGER,
       terminal_id INTEGER,
       project_number TEXT,
+      vano TEXT,
       request_key TEXT,
       badge TEXT,
       status TEXT,
@@ -119,6 +122,11 @@ function optionalString(value: unknown, maxLength = 500) {
   return result && result.length <= maxLength ? result : null;
 }
 
+function optionalScalar(value: unknown, maxLength = 500) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return optionalString(value, maxLength);
+}
+
 function eventType(payload: Record<string, unknown>) {
   for (const key of ["event", "event_type", "type"]) {
     const value = optionalString(payload[key], 100);
@@ -137,6 +145,7 @@ function fromRow(row: EventRow): StoredArgoWebhookEvent {
     cartId: row.cart_id,
     terminalId: row.terminal_id,
     projectNumber: row.project_number,
+    vano: row.vano,
     requestKey: row.request_key,
     badge: row.badge,
     status: row.status,
@@ -167,6 +176,7 @@ export function recordArgoWebhookEvent(input: {
       cart_id,
       terminal_id,
       project_number,
+      vano,
       request_key,
       badge,
       status,
@@ -225,6 +235,7 @@ export function recordArgoWebhookEvent(input: {
       cart_id,
       terminal_id,
       project_number,
+      vano,
       request_key,
       badge,
       status,
@@ -232,7 +243,7 @@ export function recordArgoWebhookEvent(input: {
       last_received_at,
       delivery_count,
       processing_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending')
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'pending')
   `).run(
     input.eventId,
     eventType(input.payload),
@@ -242,6 +253,7 @@ export function recordArgoWebhookEvent(input: {
     positiveInteger(input.payload.cart_id),
     positiveInteger(input.payload.terminal_id),
     optionalString(input.payload.project_number),
+    optionalScalar(input.payload.vano),
     optionalString(input.payload.request_key),
     optionalString(input.payload.badge, 100),
     optionalString(input.payload.status, 100),
@@ -259,6 +271,7 @@ export function recordArgoWebhookEvent(input: {
       cart_id,
       terminal_id,
       project_number,
+      vano,
       request_key,
       badge,
       status,
