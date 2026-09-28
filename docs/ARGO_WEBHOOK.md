@@ -83,3 +83,36 @@ is not coupled to Magento/OGL processing availability.
 
 NEXT ARGO retries non-2xx responses, so operational failures intentionally return
 non-2xx rather than acknowledging an event that was not durably stored.
+
+
+## Smoke test before giving the URL to ARGO
+
+With the deployed server configured with the same `ARGO_WEBHOOK_SECRET`, build one
+body once, sign those exact bytes, and send them unchanged:
+
+```bash
+EVENT_ID="css-webhook-smoke-$(date +%s)"
+BODY="{\"event\":\"cart.loaded\",\"event_id\":\"$EVENT_ID\",\"cart_id\":420420002,\"terminal_id\":42042,\"project_number\":\"OGL-TEST-002\",\"vano\":\"TEST\",\"occurred_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+SIG="$(printf %s "$BODY" | openssl dgst -sha256 -hmac "$ARGO_WEBHOOK_SECRET" -hex | awk '{print $2}')"
+
+curl -sS -i https://YOUR_KIOSK_HOST/api/argo/events \
+  -H "Content-Type: application/json" \
+  -H "X-Argo-Event-Id: $EVENT_ID" \
+  -H "X-Argo-Signature: $SIG" \
+  --data-binary "$BODY"
+```
+
+The first delivery should return `200` with `duplicate:false`. Re-send the exact
+same command/body and the endpoint should return `duplicate:true`.
+
+Inspect the inbox directly:
+
+```bash
+sqlite3 "$KIOSK_DB_PATH" '
+SELECT event_id,event_type,cart_id,terminal_id,vano,delivery_count,processing_status
+FROM argo_webhook_events
+ORDER BY received_at DESC
+LIMIT 10;
+'
+```
