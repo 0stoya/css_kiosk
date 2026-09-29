@@ -445,7 +445,7 @@
   width: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(110px, .55fr) minmax(140px, .7fr) auto;
+  grid-template-columns: minmax(0, 1.35fr) minmax(100px, .45fr) minmax(180px, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -459,6 +459,18 @@
 .cartCard:hover {
   border-color: #9db4c7;
   background: #f8fbfe;
+}
+
+.cartCard:disabled {
+  cursor: default;
+  border-color: var(--css-border);
+  background: #f6f9fc;
+  opacity: .72;
+}
+
+.cartCard:disabled:hover {
+  border-color: var(--css-border);
+  background: #f6f9fc;
 }
 
 .cartCard > span:not(.useCart) {
