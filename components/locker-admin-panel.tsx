@@ -46,6 +46,14 @@ type LockerStatus = {
     lineCount: number;
     totalQuantity: number;
     createdAt: string;
+    machine: {
+      state: "loaded" | "withdrawn" | null;
+      loadedAt: string | null;
+      withdrawnAt: string | null;
+      compartment: string | null;
+      requestKey: string | null;
+      status: string | null;
+    };
   }>;
   manualOpen: {
     available: false;
@@ -105,6 +113,25 @@ function formatUpdated(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function machineStateLabel(cart: LockerStatus["carts"][number]) {
+  if (cart.machine.state === "withdrawn") return "Collected";
+  if (cart.machine.state === "loaded") return "Ready for collection";
+  return "ARGO active cart";
+}
+
+function machineStateDetail(cart: LockerStatus["carts"][number]) {
+  if (cart.machine.state === "withdrawn" && cart.machine.withdrawnAt) {
+    return formatUpdated(cart.machine.withdrawnAt);
+  }
+  if (cart.machine.state === "loaded" && cart.machine.compartment) {
+    return `Compartment ${cart.machine.compartment}`;
+  }
+  if (cart.machine.state === "loaded" && cart.machine.loadedAt) {
+    return `Loaded ${formatUpdated(cart.machine.loadedAt)}`;
+  }
+  return "No machine event stored yet";
 }
 
 export function LockerAdminPanel({
@@ -297,33 +324,44 @@ export function LockerAdminPanel({
                 </div>
               </div>
               <p className={styles.releaseIntro}>
-                These are ARGO cart IDs associated with terminal {status.terminal.id}. The current API does not tell us which occupied cell belongs to which cart.
+                These are ARGO cart IDs associated with terminal {status.terminal.id}, enriched with signed machine events. When ARGO reports a loaded compartment we show it directly; the kiosk does not infer a cart-to-cell mapping.
               </p>
               {status.carts.length ? (
                 <div className={styles.cartList}>
-                  {status.carts.map((cart) => (
-                    <button
-                      type="button"
-                      className={styles.cartCard}
-                      key={cart.id}
-                      onClick={() => setReleaseCartId(String(cart.id))}
-                      title={`Use cart ${cart.id} for Open locker`}
-                    >
-                      <span>
-                        <strong>Cart {cart.id}</strong>
-                        <small>{cart.projectNumber || "No project / OGL reference"}</small>
-                      </span>
-                      <span>
-                        <strong>{cart.totalQuantity}</strong>
-                        <small>{cart.lineCount} line{cart.lineCount === 1 ? "" : "s"}</small>
-                      </span>
-                      <span>
-                        <strong>Employee {cart.employeeId}</strong>
-                        <small>ARGO owner</small>
-                      </span>
-                      <span className={styles.useCart}>Use cart</span>
-                    </button>
-                  ))}
+                  {status.carts.map((cart) => {
+                    const collected = cart.machine.state === "withdrawn";
+                    return (
+                      <button
+                        type="button"
+                        className={styles.cartCard}
+                        key={cart.id}
+                        onClick={() => setReleaseCartId(String(cart.id))}
+                        title={
+                          collected
+                            ? `Cart ${cart.id} has already been collected`
+                            : `Use cart ${cart.id} for Open locker`
+                        }
+                        disabled={collected}
+                      >
+                        <span>
+                          <strong>Cart {cart.id}</strong>
+                          <small>{cart.projectNumber || "No project / OGL reference"}</small>
+                          <small>ARGO owner · Employee {cart.employeeId}</small>
+                        </span>
+                        <span>
+                          <strong>{cart.totalQuantity}</strong>
+                          <small>{cart.lineCount} line{cart.lineCount === 1 ? "" : "s"}</small>
+                        </span>
+                        <span>
+                          <strong>{machineStateLabel(cart)}</strong>
+                          <small>{machineStateDetail(cart)}</small>
+                        </span>
+                        <span className={styles.useCart}>
+                          {collected ? "Collected" : "Use cart"}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className={styles.emptyState}>ARGO returned no active cart records for this terminal.</div>
@@ -343,7 +381,7 @@ export function LockerAdminPanel({
                 </span>
               </div>
               <p className={styles.releaseIntro}>
-                Open the locker for a cart confirmed as physically loaded on this terminal. This uses the RFID you signed in with; ARGO still requires confirmation on the machine before any door opens.
+                Request collection for an ARGO cart on this terminal. A signed cart.withdrawn event blocks repeat release; older carts without a stored cart.loaded event remain available. ARGO still requires confirmation on the machine before any door opens.
               </p>
               <div className={styles.releaseForm}>
                 <label>
