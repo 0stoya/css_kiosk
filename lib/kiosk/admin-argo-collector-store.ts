@@ -111,13 +111,11 @@ function fromRow(row: Row | undefined): AdminArgoCollectorLink | null {
   };
 }
 
-export function getAdminArgoCollector(input: {
-  companyId: number;
-  companyUserId: number;
-}) {
-  const companyId = positiveInteger(input.companyId, "company_id");
-  const companyUserId = positiveInteger(input.companyUserId, "company_user_id");
-  const row = getDatabase()
+function selectAdminArgoCollectorByCompanyUser(
+  companyId: number,
+  companyUserId: number,
+) {
+  return getDatabase()
     .prepare(`
       SELECT
         company_id,
@@ -134,8 +132,54 @@ export function getAdminArgoCollector(input: {
       WHERE company_id = ? AND company_user_id = ?
     `)
     .get(companyId, companyUserId) as Row | undefined;
+}
 
-  return fromRow(row);
+function selectAdminArgoCollectorByCustomer(
+  companyId: number,
+  customerId: number,
+) {
+  const rows = getDatabase()
+    .prepare(`
+      SELECT
+        company_id,
+        company_user_id,
+        customer_id,
+        argo_employee_id,
+        provider_badge,
+        plant_id,
+        profile_id,
+        last_verified_at,
+        created_at,
+        updated_at
+      FROM admin_argo_collectors
+      WHERE company_id = ? AND customer_id = ?
+      ORDER BY updated_at DESC
+      LIMIT 2
+    `)
+    .all(companyId, customerId) as Row[];
+
+  if (rows.length > 1) {
+    throw new Error(
+      "Admin ARGO collector is ambiguous for this Magento customer and company.",
+    );
+  }
+
+  return rows[0];
+}
+
+export function getAdminArgoCollector(input: {
+  companyId: number;
+  companyUserId: number;
+  customerId?: number;
+}) {
+  const companyId = positiveInteger(input.companyId, "company_id");
+  const companyUserId = positiveInteger(input.companyUserId, "company_user_id");
+  const exact = selectAdminArgoCollectorByCompanyUser(companyId, companyUserId);
+  if (exact) return fromRow(exact);
+
+  if (input.customerId === undefined) return null;
+  const customerId = positiveInteger(input.customerId, "customer_id");
+  return fromRow(selectAdminArgoCollectorByCustomer(companyId, customerId));
 }
 
 export function recordAdminArgoCollector(input: {
@@ -162,14 +206,21 @@ export function recordAdminArgoCollector(input: {
       : positiveInteger(input.profileId, "profile_id");
   const now = new Date().toISOString();
   const db = getDatabase();
-  const existing = getAdminArgoCollector({ companyId, companyUserId });
+  const exact = getAdminArgoCollector({ companyId, companyUserId });
+  const customerMatch =
+    exact ||
+    getAdminArgoCollector({
+      companyId,
+      companyUserId,
+      customerId,
+    });
 
   if (
-    existing &&
+    customerMatch &&
     (
-      existing.customerId !== customerId ||
-      existing.argoEmployeeId !== argoEmployeeId ||
-      existing.plantId !== plantId
+      customerMatch.customerId !== customerId ||
+      customerMatch.argoEmployeeId !== argoEmployeeId ||
+      customerMatch.plantId !== plantId
     )
   ) {
     throw new Error(
@@ -177,7 +228,27 @@ export function recordAdminArgoCollector(input: {
     );
   }
 
-  db.prepare(`
+  if (customerMatch && customerMatch.companyUserId !== companyUserId) {
+    db.prepare(`
+      UPDATE admin_argo_collectors
+      SET
+        company_user_id = ?,
+        provider_badge = ?,
+        profile_id = ?,
+        last_verified_at = ?,
+        updated_at = ?
+      WHERE company_id = ? AND company_user_id = ?
+    `).run(
+      companyUserId,
+      providerBadge,
+      profileId,
+      now,
+      now,
+      companyId,
+      customerMatch.companyUserId,
+    );
+  } else {
+    db.prepare(`
     INSERT INTO admin_argo_collectors (
       company_id,
       company_user_id,
@@ -196,17 +267,18 @@ export function recordAdminArgoCollector(input: {
       last_verified_at = excluded.last_verified_at,
       updated_at = excluded.updated_at
   `).run(
-    companyId,
-    companyUserId,
-    customerId,
-    argoEmployeeId,
-    providerBadge,
-    plantId,
-    profileId,
-    now,
-    now,
-    now,
-  );
+      companyId,
+      companyUserId,
+      customerId,
+      argoEmployeeId,
+      providerBadge,
+      plantId,
+      profileId,
+      now,
+      now,
+      now,
+    );
+  }
 
   const stored = getAdminArgoCollector({ companyId, companyUserId });
   if (!stored) {

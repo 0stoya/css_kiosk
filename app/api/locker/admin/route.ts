@@ -176,6 +176,7 @@ export async function POST(request: Request) {
       storedAdminCollector = getAdminArgoCollector({
         companyId: company.companyId,
         companyUserId: company.companyUserId,
+        customerId: session.customer.customerId,
       });
       storedProviderBadge = storedAdminCollector?.argoBadge || null;
     } catch {
