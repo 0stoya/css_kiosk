@@ -286,3 +286,157 @@ export function recordArgoWebhookEvent(input: {
 
   return { stored: true, event: fromRow(inserted) };
 }
+
+
+export type ArgoCartMachineState = {
+  state: "loaded" | "withdrawn" | null;
+  loadedAt: string | null;
+  withdrawnAt: string | null;
+  compartment: string | null;
+  requestKey: string | null;
+  badge: string | null;
+  status: string | null;
+};
+
+type LifecycleRow = {
+  event_id: string;
+  event_type: string;
+  occurred_at: string | null;
+  received_at: string;
+  cart_id: number;
+  vano: string | null;
+  request_key: string | null;
+  badge: string | null;
+  status: string | null;
+};
+
+function eventTime(row: LifecycleRow) {
+  if (!row.occurred_at) return null;
+  const parsed = Date.parse(row.occurred_at);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function latestLifecycleRow(
+  rows: LifecycleRow[],
+  eventType: "cart.loaded" | "cart.withdrawn",
+) {
+  let latest: { row: LifecycleRow; time: number } | null = null;
+
+  for (const row of rows) {
+    if (row.event_type !== eventType) continue;
+    const time = eventTime(row);
+    if (time === null) continue;
+
+    if (!latest || time > latest.time) {
+      latest = { row, time };
+    }
+  }
+
+  return latest;
+}
+
+function deriveCartMachineState(rows: LifecycleRow[]): ArgoCartMachineState {
+  const loaded = latestLifecycleRow(rows, "cart.loaded");
+  const withdrawn = latestLifecycleRow(rows, "cart.withdrawn");
+
+  const state =
+    withdrawn && (!loaded || withdrawn.time >= loaded.time)
+      ? "withdrawn"
+      : loaded
+        ? "loaded"
+        : null;
+
+  const source = state === "withdrawn" ? withdrawn?.row : loaded?.row;
+
+  return {
+    state,
+    loadedAt: loaded?.row.occurred_at || null,
+    withdrawnAt: withdrawn?.row.occurred_at || null,
+    compartment: loaded?.row.vano || null,
+    requestKey: withdrawn?.row.request_key || null,
+    badge: withdrawn?.row.badge || null,
+    status: source?.status || null,
+  };
+}
+
+export function getArgoCartMachineStates(input: {
+  cartIds: number[];
+  terminalId?: number;
+}) {
+  const cartIds = [
+    ...new Set(
+      input.cartIds.filter(
+        (value) => Number.isSafeInteger(value) && value > 0,
+      ),
+    ),
+  ];
+
+  const result = new Map<number, ArgoCartMachineState>();
+  if (cartIds.length === 0) return result;
+
+  const placeholders = cartIds.map(() => "?").join(",");
+  const parameters: Array<number | string> = [...cartIds];
+  let terminalClause = "";
+
+  if (
+    input.terminalId !== undefined &&
+    Number.isSafeInteger(input.terminalId) &&
+    input.terminalId > 0
+  ) {
+    terminalClause = "AND terminal_id = ?";
+    parameters.push(input.terminalId);
+  }
+
+  const rows = getDatabase()
+    .prepare(`
+      SELECT
+        event_id,
+        event_type,
+        occurred_at,
+        received_at,
+        cart_id,
+        vano,
+        request_key,
+        badge,
+        status
+      FROM argo_webhook_events
+      WHERE cart_id IN (${placeholders})
+        AND event_type IN ('cart.loaded', 'cart.withdrawn')
+        AND event_id NOT LIKE 'css-webhook-smoke-%'
+        ${terminalClause}
+    `)
+    .all(...parameters) as LifecycleRow[];
+
+  const grouped = new Map<number, LifecycleRow[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.cart_id);
+    if (existing) existing.push(row);
+    else grouped.set(row.cart_id, [row]);
+  }
+
+  for (const cartId of cartIds) {
+    result.set(cartId, deriveCartMachineState(grouped.get(cartId) || []));
+  }
+
+  return result;
+}
+
+export function getArgoCartMachineState(input: {
+  cartId: number;
+  terminalId?: number;
+}) {
+  return (
+    getArgoCartMachineStates({
+      cartIds: [input.cartId],
+      terminalId: input.terminalId,
+    }).get(input.cartId) || {
+      state: null,
+      loadedAt: null,
+      withdrawnAt: null,
+      compartment: null,
+      requestKey: null,
+      badge: null,
+      status: null,
+    }
+  );
+}

@@ -2,6 +2,7 @@ import { listArgoCarts } from "@/lib/argo/carts";
 import { getArgoProduct } from "@/lib/argo/products";
 import { resolveConfiguredArgoTerminal } from "@/lib/argo/terminals";
 import type { ArgoProduct } from "@/lib/argo/types";
+import { getArgoCartMachineStates } from "@/lib/kiosk/argo-webhook-event-store";
 
 const PRODUCT_CACHE_TTL_MS = 60_000;
 const productCache = new Map<number, { expiresAt: number; value: ArgoProduct | null }>();
@@ -65,6 +66,14 @@ export type KioskLockerAdminStatus = {
     lineCount: number;
     totalQuantity: number;
     createdAt: string;
+    machine: {
+      state: "loaded" | "withdrawn" | null;
+      loadedAt: string | null;
+      withdrawnAt: string | null;
+      compartment: string | null;
+      requestKey: string | null;
+      status: string | null;
+    };
   }>;
   manualOpen: {
     available: false;
@@ -129,6 +138,14 @@ export async function getKioskLockerAdminStatus(): Promise<KioskLockerAdminStatu
       left.cellId - right.cellId,
   );
 
+  const terminalCarts = cartPage.data.filter(
+    (cart) => cart.terminalId === terminal.id,
+  );
+  const machineStates = getArgoCartMachineStates({
+    cartIds: terminalCarts.map((cart) => cart.id),
+    terminalId: terminal.id,
+  });
+
   return {
     terminal: {
       id: terminal.id,
@@ -142,16 +159,35 @@ export async function getKioskLockerAdminStatus(): Promise<KioskLockerAdminStatu
     },
     summary: terminal.slotSummary,
     positions,
-    carts: cartPage.data
-      .filter((cart) => cart.terminalId === terminal.id)
-      .map((cart) => ({
-        id: cart.id,
-        employeeId: cart.employeeId,
-        projectNumber: cart.projectNumber,
-        lineCount: cart.lineCount,
-        totalQuantity: cart.totalQuantity,
-        createdAt: cart.createdAt,
-      }))
+    carts: terminalCarts
+      .map((cart) => {
+        const machine = machineStates.get(cart.id) || {
+          state: null,
+          loadedAt: null,
+          withdrawnAt: null,
+          compartment: null,
+          requestKey: null,
+          badge: null,
+          status: null,
+        };
+
+        return {
+          id: cart.id,
+          employeeId: cart.employeeId,
+          projectNumber: cart.projectNumber,
+          lineCount: cart.lineCount,
+          totalQuantity: cart.totalQuantity,
+          createdAt: cart.createdAt,
+          machine: {
+            state: machine.state,
+            loadedAt: machine.loadedAt,
+            withdrawnAt: machine.withdrawnAt,
+            compartment: machine.compartment,
+            requestKey: machine.requestKey,
+            status: machine.status,
+          },
+        };
+      })
       .sort((left, right) => right.id - left.id),
     manualOpen: {
       available: false,
