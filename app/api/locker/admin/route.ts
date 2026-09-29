@@ -20,6 +20,7 @@ import {
   recordAdminArgoCollector,
   type AdminArgoCollectorLink,
 } from "@/lib/kiosk/admin-argo-collector-store";
+import { getArgoCartMachineState } from "@/lib/kiosk/argo-webhook-event-store";
 import {
   getEmployeeProviderLink,
   rememberEmployeeProviderBadge,
@@ -277,6 +278,24 @@ export async function POST(request: Request) {
             ok: false,
             code: "LOCKER_CART_EMPTY",
             error: "That ARGO cart has no product lines to release.",
+          },
+          { status: 409 },
+        );
+      }
+
+      providerStage = "machine lifecycle validation";
+      const machineState = getArgoCartMachineState({
+        cartId,
+        terminalId: terminal.id,
+      });
+      if (machineState.state === "withdrawn") {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "LOCKER_CART_ALREADY_WITHDRAWN",
+            error:
+              "NEXT ARGO has already confirmed this cart as collected. A second release will not be requested.",
+            withdrawnAt: machineState.withdrawnAt,
           },
           { status: 409 },
         );
