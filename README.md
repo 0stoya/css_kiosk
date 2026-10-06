@@ -164,6 +164,19 @@ yarn dev
 
 Development simulation is intentionally disabled in production builds. Real production NFC input will come from the Android reader bridge.
 
+## Production runtime
+
+Production uses the committed PM2 ecosystem configuration and a built Next.js server. Do not run `next dev` or Turbopack development mode on the production host.
+
+```bash
+yarn install --frozen-lockfile
+yarn build
+pm2 start ecosystem.config.cjs --only css-kiosk --env production
+pm2 save
+```
+
+The process binds to `127.0.0.1:3099` by default for the Nginx reverse proxy. Set `KIOSK_PORT` before starting PM2 only when an alternate local port is intentionally required.
+
 ## Validation
 
 ```bash
