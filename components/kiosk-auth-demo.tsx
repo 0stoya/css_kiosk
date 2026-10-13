@@ -824,10 +824,10 @@ export function KioskAuthDemo() {
                 <p>Read this code to your CSS administrator. Once approved, tap your card to sign in.</p>
               </div>
             ) : (
-            <div className={`nfc-target${state === "reading" ? " is-reading" : ""}`} role="status">
-              <span className="nfc-icon"><ContactlessIcon /></span>
-              <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
-            </div>
+              <div className={`nfc-target${state === "reading" ? " is-reading" : ""}`} role="status">
+                <span className="nfc-icon"><ContactlessIcon /></span>
+                <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
+              </div>
             )}
 
             <p className="privacy-note">
