@@ -184,7 +184,7 @@ export function verifyKioskPairingProof(
   if (
     deviceId !== expectedDeviceId ||
     !/^browser-[a-f0-9]{24}$/.test(deviceId) ||
-    !/^\\d{12,15}$/.test(timestamp) ||
+    !/^\d{12,15}$/.test(timestamp) ||
     Math.abs(Date.now() - Number(timestamp)) > REQUEST_WINDOW_MS ||
     !/^[A-Za-z0-9_-]{16,128}$/.test(nonce) ||
     !/^[A-Za-z0-9_-]{80,100}$/.test(signature)
