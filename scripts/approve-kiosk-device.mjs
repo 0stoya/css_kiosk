@@ -115,7 +115,9 @@ if (
         console.log("The kiosk will detect approval automatically; its existing card reader can then be used.");
       }
     } catch (error) {
-      try { if (command === "approve") database?.exec("ROLLBACK"); } catch {}
+      try { if (command === "approve") database?.exec("ROLLBACK"); } catch {
+        // Preserve the original error even if the transaction already closed.
+      }
       fail(error instanceof Error ? error.message : "Unexpected database error.");
     } finally {
       database?.close();
