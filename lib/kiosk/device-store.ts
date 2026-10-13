@@ -277,7 +277,7 @@ export function beginBrowserKioskPairing(input: {
   const code = pairingCode();
   const normalized = code.replaceAll("-", "");
   const codeHash = createHash("sha256")
-    .update(`css-kiosk-pairing-v1\\0${normalized}`)
+    .update("css-kiosk-pairing-v1:" + normalized)
     .digest("hex");
   const expiresAt = new Date(now.getTime() + PAIRING_TTL_MS).toISOString();
 
