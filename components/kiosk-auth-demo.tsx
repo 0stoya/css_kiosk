@@ -311,6 +311,7 @@ export function KioskAuthDemo() {
     };
   }, [deviceTrust, resolveCredential, showPrototypeTools]);
 
+  // Keep browser-simulated device enrollment strictly in development mode.
   useEffect(() => {
     if (!showPrototypeTools) return;
 
@@ -319,7 +320,6 @@ export function KioskAuthDemo() {
     simulatorRef.current = simulator;
     deviceSignerRef.current = deviceSigner;
     let cancelled = false;
-
 
     const removeCredentialHandler = simulator.onCredential((credential) => {
       if (
