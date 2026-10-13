@@ -1,7 +1,6 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import {
   consumeKioskDeviceNonce,
-  consumeKioskPairingNonce,
   getKioskDevice,
   markKioskDeviceSeen,
   type KioskDevice,
@@ -219,11 +218,6 @@ export function verifyKioskPairingProof(
     );
   }
 
-  if (!consumeKioskPairingNonce(deviceId, nonce)) {
-    throw new KioskDeviceRequestError(
-      "This kiosk pairing request has already been used.",
-      "DEVICE_REPLAY",
-      409,
-    );
-  }
+  // The pending-record store atomically applies abuse limits before consuming
+  // this nonce, so rejected public requests cannot fill the nonce table.
 }
