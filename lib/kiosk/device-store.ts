@@ -10,7 +10,7 @@ const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export class KioskDevicePairingError extends Error {
   constructor(
     message: string,
-    readonly code: "DEVICE_ALREADY_REGISTERED" | "PAIRING_RATE_LIMITED",
+    readonly code: "DEVICE_ALREADY_REGISTERED" | "PAIRING_RATE_LIMITED" | "PAIRING_REPLAY",
     readonly status: number,
   ) {
     super(message);
@@ -235,6 +235,7 @@ export function beginBrowserKioskPairing(input: {
   deviceId: string;
   publicJwk: string;
   sourceAddress: string;
+  nonce: string;
 }) {
   const db = getDatabase();
   const existing = getKioskDevice(input.deviceId);
@@ -273,6 +274,14 @@ export function beginBrowserKioskPairing(input: {
     INSERT INTO kiosk_device_pairing_attempts (source_hash, created_at)
     VALUES (?, ?)
   `).run(sourceHash, timestamp);
+
+  if (!consumeKioskPairingNonce(input.deviceId, input.nonce)) {
+    throw new KioskDevicePairingError(
+      "This kiosk pairing request has already been used.",
+      "PAIRING_REPLAY",
+      409,
+    );
+  }
 
   const code = pairingCode();
   const normalized = code.replaceAll("-", "");
