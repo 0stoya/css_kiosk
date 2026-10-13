@@ -122,3 +122,51 @@ test("a previously revoked device identity cannot be silently reactivated", () =
     fixture.close();
   }
 });
+
+test("actual kiosk pairing store is pending-only, nonce guarded and rate limited", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "css-kiosk-store-"));
+  const dbPath = join(dir, "pairing.sqlite");
+  const before = process.env.KIOSK_DB_PATH;
+  try {
+    process.env.KIOSK_DB_PATH = dbPath;
+    // Node 24's transform-types test flag handles TypeScript parameter properties.
+    const store = await import("../lib/kiosk/device-store.ts");
+    const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+      .publicKey.export({ format: "jwk" });
+    const id = "browser-" + createHash("sha256")
+      .update(["P-256", key.x, key.y].join("\n")).digest("hex").slice(0, 24);
+    const input = {
+      deviceId: id,
+      publicJwk: JSON.stringify({ kty: "EC", crv: "P-256", x: key.x, y: key.y }),
+      sourceAddress: "mobile-data-test-source",
+      nonce: "secure-pairing-nonce-first",
+    };
+    const result = store.beginBrowserKioskPairing(input);
+    assert.match(result.code, /^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
+    assert.ok(Date.parse(result.expiresAt) > Date.now());
+    assert.equal(store.getKioskDevice(id), null, "pending key must not be trusted");
+
+    assert.throws(
+      () => store.beginBrowserKioskPairing(input),
+      (error) => error.code === "PAIRING_REPLAY",
+    );
+    for (let index = 0; index < 13; index += 1) {
+      store.beginBrowserKioskPairing({
+        ...input,
+        nonce: "secure-pairing-nonce-" + index,
+      });
+    }
+    assert.throws(
+      () => store.beginBrowserKioskPairing({
+        ...input,
+        nonce: "secure-pairing-nonce-over-limit",
+      }),
+      (error) => error.code === "PAIRING_RATE_LIMITED",
+    );
+  } finally {
+    if (before === undefined) delete process.env.KIOSK_DB_PATH;
+    else process.env.KIOSK_DB_PATH = before;
+    // The test runner is Linux; an open SQLite handle does not prevent unlinking.
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
