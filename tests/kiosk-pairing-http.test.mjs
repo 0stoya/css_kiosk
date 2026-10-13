@@ -66,7 +66,9 @@ test("production pairing -> local approval -> signed NFC lookup", { timeout: 300
       if (proc.exitCode !== null) break;
       try {
         if ((await fetch(base + "/api/health")).ok) { ready = true; break; }
-      } catch {}
+      } catch {
+        // The isolated localhost server may still be starting.
+      }
       await new Promise((resolveWait) => setTimeout(resolveWait, 150));
     }
     assert.equal(ready, true, "Next test server unavailable: " + logs.slice(-4000));
