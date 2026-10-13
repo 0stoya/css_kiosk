@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:pairing": "node --test tests/kiosk-device-pairing.test.mjs"
+    "test:pairing": "node --experimental-transform-types --test tests/kiosk-device-pairing.test.mjs"
   },
   "dependencies": {
     "next": "16.3.4",
