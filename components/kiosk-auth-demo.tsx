@@ -415,6 +415,16 @@ export function KioskAuthDemo() {
         if (status.status === 403) {
           throw new Error("This kiosk has been disabled. Contact an administrator.");
         }
+        if (status.status === 401) {
+          const rejection = await status.json().catch(() => null) as { code?: string } | null;
+          if (rejection?.code !== "DEVICE_UNTRUSTED") {
+            setPairingCode(null);
+            setMessage("Kiosk device signature verification failed. Contact an administrator.");
+            setDeviceTrust("error");
+            setState("error");
+            return;
+          }
+        }
 
         // If the ten-minute pairing window expires, replace the displayed
         // code with a new signed request. No browser request approves itself.
