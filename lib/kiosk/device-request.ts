@@ -198,7 +198,17 @@ export function verifyKioskPairingProof(
 
   let verified = false;
   try {
-    const key = createPublicKey({ key: publicJwk, format: "jwk" });
+    // Reconstruct a minimal Node-compatible JWK instead of passing the DOM
+    // JsonWebKey type (which lacks Node's index signature).
+    const key = createPublicKey({
+      key: {
+        kty: "EC",
+        crv: "P-256",
+        x: publicJwk.x,
+        y: publicJwk.y,
+      },
+      format: "jwk",
+    });
     const bytes = Buffer.from(signature, "base64url");
     verified = bytes.length === 64 && verify(
       "sha256",
