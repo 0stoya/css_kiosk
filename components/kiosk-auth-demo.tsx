@@ -113,6 +113,8 @@ export function KioskAuthDemo() {
   const [employeeEnrollment, setEmployeeEnrollment] = useState<EmployeeEnrollmentSummary | null>(null);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
   const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
+  const resolvingCredentialRef = useRef(false);
+  const pendingNativeCredentialRef = useRef<NfcCredential | null>(null);
   const stateRef = useRef<KioskAuthState>("idle");
   const employeeEnrollmentRef = useRef<EmployeeEnrollmentSummary | null>(null);
   const employeeEnrollmentCodeRef = useRef("");
@@ -211,75 +213,65 @@ export function KioskAuthDemo() {
     [signedFetch],
   );
 
-  useEffect(() => {
-    if (!showPrototypeTools) return;
+  const resolveCredential = useCallback(async (credential: NfcCredential) => {
+    if (resolvingCredentialRef.current) return;
+    resolvingCredentialRef.current = true;
+    setActiveCredential(credential);
+    setState("reading");
+    setMessage(null);
+    setFormError(null);
+    setVerifiedCustomer(null);
 
-    const simulator = createKioskNfcSimulator();
-    const deviceSigner = createDevelopmentKioskDeviceSigner();
-    simulatorRef.current = simulator;
-    deviceSignerRef.current = deviceSigner;
-    let cancelled = false;
-    let deviceReady = false;
-    let resolvingCredential = false;
-    let pendingNativeCredential: NfcCredential | null = null;
+    try {
+      const response = await signedFetch("/api/nfc/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const body = (await response.json()) as ResolveCardResponse;
 
-    async function resolveCredential(credential: NfcCredential) {
-      if (resolvingCredential) return;
-      resolvingCredential = true;
-      setActiveCredential(credential);
-      setState("reading");
-      setMessage(null);
-      setFormError(null);
-      setVerifiedCustomer(null);
-
-      try {
-        const response = await signedFetch("/api/nfc/resolve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential }),
-        });
-        const body = (await response.json()) as ResolveCardResponse;
-
-        if (!response.ok || !body.ok) {
-          setMessage(body.error || "Card lookup is unavailable right now.");
-          setState("error");
-          return;
-        }
-
-        if (body.status === "registered" && body.customer) {
-          setVerifiedCustomer(body.customer);
-          setEmail(body.customer.email);
-
-          if (employeeEnrollmentRef.current) {
-            await completeActiveEmployeeEnrollment(credential, body.customer);
-            return;
-          }
-
-          setState("welcome");
-          return;
-        }
-
-        if (body.status === "unregistered") {
-          setState("unregistered");
-          return;
-        }
-
-        if (body.status === "revoked") {
-          setMessage("This card is no longer active. Please ask a member of staff for help.");
-          setState("error");
-          return;
-        }
-
-        setMessage("This card could not be recognised.");
+      if (!response.ok || !body.ok) {
+        setMessage(body.error || "Card lookup is unavailable right now.");
         setState("error");
-      } catch {
-        setMessage("Card lookup is unavailable right now. Please try again.");
-        setState("error");
-      } finally {
-        resolvingCredential = false;
+        return;
       }
-    }
 
+      if (body.status === "registered" && body.customer) {
+        setVerifiedCustomer(body.customer);
+        setEmail(body.customer.email);
+
+        if (employeeEnrollmentRef.current) {
+          await completeActiveEmployeeEnrollment(credential, body.customer);
+          return;
+        }
+
+        setState("welcome");
+        return;
+      }
+
+      if (body.status === "unregistered") {
+        setState("unregistered");
+        return;
+      }
+
+      if (body.status === "revoked") {
+        setMessage("This card is no longer active. Please ask a member of staff for help.");
+        setState("error");
+        return;
+      }
+
+      setMessage("This card could not be recognised.");
+      setState("error");
+    } catch {
+      setMessage("Card lookup is unavailable right now. Please try again.");
+      setState("error");
+    } finally {
+      resolvingCredentialRef.current = false;
+    }
+  }, [completeActiveEmployeeEnrollment, signedFetch]);
+
+  // The physical reader must be observed independently of the development simulator.
+  useEffect(() => {
     function handleNativeRfidCard(event: Event) {
       if (
         stateRef.current !== "idle" &&
@@ -297,8 +289,16 @@ export function KioskAuthDemo() {
       }
 
       const credential: NfcCredential = { type: "uid", value };
-      if (!deviceReady) {
-        pendingNativeCredential = credential;
+      if (deviceTrust !== "trusted") {
+        if (showPrototypeTools && deviceTrust === "enrolling") {
+          pendingNativeCredentialRef.current = credential;
+          return;
+        }
+
+        // Android currently emits RFID events but has no production signer bridge.
+        // Do not bypass server-side kiosk device trust to process the card.
+        setMessage("Card detected, but trusted kiosk device authentication is not available.");
+        setState("error");
         return;
       }
 
@@ -306,6 +306,20 @@ export function KioskAuthDemo() {
     }
 
     window.addEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
+    return () => {
+      window.removeEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
+    };
+  }, [deviceTrust, resolveCredential, showPrototypeTools]);
+
+  useEffect(() => {
+    if (!showPrototypeTools) return;
+
+    const simulator = createKioskNfcSimulator();
+    const deviceSigner = createDevelopmentKioskDeviceSigner();
+    simulatorRef.current = simulator;
+    deviceSignerRef.current = deviceSigner;
+    let cancelled = false;
+
 
     const removeCredentialHandler = simulator.onCredential((credential) => {
       if (
@@ -329,11 +343,10 @@ export function KioskAuthDemo() {
         if (!statusResponse.ok) throw new Error("Kiosk device trust check failed.");
 
         if (cancelled) return;
-        deviceReady = true;
         setDeviceTrust("trusted");
 
-        const queuedCredential = pendingNativeCredential;
-        pendingNativeCredential = null;
+        const queuedCredential = pendingNativeCredentialRef.current;
+        pendingNativeCredentialRef.current = null;
         if (
           queuedCredential &&
           (stateRef.current === "idle" ||
@@ -355,16 +368,13 @@ export function KioskAuthDemo() {
 
     return () => {
       cancelled = true;
-      deviceReady = false;
-      pendingNativeCredential = null;
-      window.removeEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
       removeCredentialHandler();
       removeErrorHandler();
       void simulator.stop();
       simulatorRef.current = null;
       deviceSignerRef.current = null;
     };
-  }, [completeActiveEmployeeEnrollment, showPrototypeTools, signedFetch]);
+  }, [resolveCredential, showPrototypeTools]);
 
   function reset() {
     const signer = deviceSignerRef.current;
@@ -687,19 +697,6 @@ export function KioskAuthDemo() {
             <p className="privacy-note">
               The kiosk automatically signs out after {KIOSK_INACTIVITY_TIMEOUT_SECONDS} seconds of inactivity.
             </p>
-            {state === "idle" ? (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => {
-                  setMessage(null);
-                  setFormError(null);
-                  setState("employee-enrollment-code");
-                }}
-              >
-                Employee RFID enrollment
-              </button>
-            ) : null}
           </section>
         ) : null}
 
