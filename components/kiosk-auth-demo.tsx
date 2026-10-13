@@ -14,6 +14,10 @@ import {
   type DevelopmentKioskDeviceSigner,
 } from "@/lib/kiosk/device-simulator";
 import type { NfcCredential } from "@/lib/kiosk/nfc-reader";
+import {
+  createBrowserKioskDeviceSigner,
+  type BrowserKioskDeviceSigner,
+} from "@/lib/kiosk/browser-device-signer";
 import type { VerifiedKioskCustomer } from "@/lib/magento/customer-context";
 import {
   createKioskNfcSimulator,
@@ -84,7 +88,7 @@ type EmployeeEnrollmentResponse = {
   };
 };
 
-type DeviceTrustState = "enrolling" | "trusted" | "error";
+type DeviceTrustState = "enrolling" | "pairing" | "trusted" | "error";
 
 type NativeRfidDetail = {
   type?: unknown;
@@ -102,6 +106,7 @@ export function KioskAuthDemo() {
   const [magentoResult, setMagentoResult] = useState<SimulatedMagentoResult>("real");
   const [readerAvailable, setReaderAvailable] = useState(true);
   const [deviceTrust, setDeviceTrust] = useState<DeviceTrustState>("enrolling");
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [activeCredential, setActiveCredential] = useState<NfcCredential | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -112,7 +117,11 @@ export function KioskAuthDemo() {
   const [employeeEnrollmentCode, setEmployeeEnrollmentCode] = useState("");
   const [employeeEnrollment, setEmployeeEnrollment] = useState<EmployeeEnrollmentSummary | null>(null);
   const simulatorRef = useRef<KioskNfcSimulator | null>(null);
-  const deviceSignerRef = useRef<DevelopmentKioskDeviceSigner | null>(null);
+  const deviceSignerRef = useRef<
+    Pick<DevelopmentKioskDeviceSigner, "signedFetch"> | null
+  >(null);
+  const resolvingCredentialRef = useRef(false);
+  const pendingNativeCredentialRef = useRef<NfcCredential | null>(null);
   const stateRef = useRef<KioskAuthState>("idle");
   const employeeEnrollmentRef = useRef<EmployeeEnrollmentSummary | null>(null);
   const employeeEnrollmentCodeRef = useRef("");
@@ -211,75 +220,65 @@ export function KioskAuthDemo() {
     [signedFetch],
   );
 
-  useEffect(() => {
-    if (!showPrototypeTools) return;
+  const resolveCredential = useCallback(async (credential: NfcCredential) => {
+    if (resolvingCredentialRef.current) return;
+    resolvingCredentialRef.current = true;
+    setActiveCredential(credential);
+    setState("reading");
+    setMessage(null);
+    setFormError(null);
+    setVerifiedCustomer(null);
 
-    const simulator = createKioskNfcSimulator();
-    const deviceSigner = createDevelopmentKioskDeviceSigner();
-    simulatorRef.current = simulator;
-    deviceSignerRef.current = deviceSigner;
-    let cancelled = false;
-    let deviceReady = false;
-    let resolvingCredential = false;
-    let pendingNativeCredential: NfcCredential | null = null;
+    try {
+      const response = await signedFetch("/api/nfc/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential }),
+      });
+      const body = (await response.json()) as ResolveCardResponse;
 
-    async function resolveCredential(credential: NfcCredential) {
-      if (resolvingCredential) return;
-      resolvingCredential = true;
-      setActiveCredential(credential);
-      setState("reading");
-      setMessage(null);
-      setFormError(null);
-      setVerifiedCustomer(null);
-
-      try {
-        const response = await signedFetch("/api/nfc/resolve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential }),
-        });
-        const body = (await response.json()) as ResolveCardResponse;
-
-        if (!response.ok || !body.ok) {
-          setMessage(body.error || "Card lookup is unavailable right now.");
-          setState("error");
-          return;
-        }
-
-        if (body.status === "registered" && body.customer) {
-          setVerifiedCustomer(body.customer);
-          setEmail(body.customer.email);
-
-          if (employeeEnrollmentRef.current) {
-            await completeActiveEmployeeEnrollment(credential, body.customer);
-            return;
-          }
-
-          setState("welcome");
-          return;
-        }
-
-        if (body.status === "unregistered") {
-          setState("unregistered");
-          return;
-        }
-
-        if (body.status === "revoked") {
-          setMessage("This card is no longer active. Please ask a member of staff for help.");
-          setState("error");
-          return;
-        }
-
-        setMessage("This card could not be recognised.");
+      if (!response.ok || !body.ok) {
+        setMessage(body.error || "Card lookup is unavailable right now.");
         setState("error");
-      } catch {
-        setMessage("Card lookup is unavailable right now. Please try again.");
-        setState("error");
-      } finally {
-        resolvingCredential = false;
+        return;
       }
-    }
 
+      if (body.status === "registered" && body.customer) {
+        setVerifiedCustomer(body.customer);
+        setEmail(body.customer.email);
+
+        if (employeeEnrollmentRef.current) {
+          await completeActiveEmployeeEnrollment(credential, body.customer);
+          return;
+        }
+
+        setState("welcome");
+        return;
+      }
+
+      if (body.status === "unregistered") {
+        setState("unregistered");
+        return;
+      }
+
+      if (body.status === "revoked") {
+        setMessage("This card is no longer active. Please ask a member of staff for help.");
+        setState("error");
+        return;
+      }
+
+      setMessage("This card could not be recognised.");
+      setState("error");
+    } catch {
+      setMessage("Card lookup is unavailable right now. Please try again.");
+      setState("error");
+    } finally {
+      resolvingCredentialRef.current = false;
+    }
+  }, [completeActiveEmployeeEnrollment, signedFetch]);
+
+  // The physical reader must be observed independently of the development simulator.
+  useEffect(() => {
     function handleNativeRfidCard(event: Event) {
       if (
         stateRef.current !== "idle" &&
@@ -297,8 +296,16 @@ export function KioskAuthDemo() {
       }
 
       const credential: NfcCredential = { type: "uid", value };
-      if (!deviceReady) {
-        pendingNativeCredential = credential;
+      if (deviceTrust !== "trusted") {
+        if (showPrototypeTools && deviceTrust === "enrolling") {
+          pendingNativeCredentialRef.current = credential;
+        }
+        // Never queue a customer's card across a manual pairing delay.
+        // A fresh tap is required once this physical kiosk is approved.
+        if (deviceTrust === "enrolling" || deviceTrust === "pairing") return;
+
+        setMessage("This kiosk is not trusted for card sign in. Ask a member of staff for help.");
+        setState("error");
         return;
       }
 
@@ -306,6 +313,20 @@ export function KioskAuthDemo() {
     }
 
     window.addEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
+    return () => {
+      window.removeEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
+    };
+  }, [deviceTrust, resolveCredential, showPrototypeTools]);
+
+  // Keep browser-simulated device enrollment strictly in development mode.
+  useEffect(() => {
+    if (!showPrototypeTools) return;
+
+    const simulator = createKioskNfcSimulator();
+    const deviceSigner = createDevelopmentKioskDeviceSigner();
+    simulatorRef.current = simulator;
+    deviceSignerRef.current = deviceSigner;
+    let cancelled = false;
 
     const removeCredentialHandler = simulator.onCredential((credential) => {
       if (
@@ -329,11 +350,10 @@ export function KioskAuthDemo() {
         if (!statusResponse.ok) throw new Error("Kiosk device trust check failed.");
 
         if (cancelled) return;
-        deviceReady = true;
         setDeviceTrust("trusted");
 
-        const queuedCredential = pendingNativeCredential;
-        pendingNativeCredential = null;
+        const queuedCredential = pendingNativeCredentialRef.current;
+        pendingNativeCredentialRef.current = null;
         if (
           queuedCredential &&
           (stateRef.current === "idle" ||
@@ -355,16 +375,134 @@ export function KioskAuthDemo() {
 
     return () => {
       cancelled = true;
-      deviceReady = false;
-      pendingNativeCredential = null;
-      window.removeEventListener("css-kiosk:rfid-card", handleNativeRfidCard as EventListener);
       removeCredentialHandler();
       removeErrorHandler();
       void simulator.stop();
       simulatorRef.current = null;
       deviceSignerRef.current = null;
     };
-  }, [completeActiveEmployeeEnrollment, showPrototypeTools, signedFetch]);
+  }, [resolveCredential, showPrototypeTools]);
+
+  // Production compatibility for the existing Android WebView (no APK change).
+  // New browser keys are not trusted until an operator approves a displayed code
+  // locally on the server. Native Android Keystore signing will replace this.
+  useEffect(() => {
+    if (showPrototypeTools) return;
+
+    let cancelled = false;
+    let approvalTimer: number | null = null;
+
+    function approved() {
+      if (cancelled) return;
+      setPairingCode(null);
+      setDeviceTrust("trusted");
+      // Do not replay cards presented before device approval.
+      pendingNativeCredentialRef.current = null;
+    }
+
+    async function waitForApproval(
+      signer: BrowserKioskDeviceSigner,
+      expiresAt: string,
+    ): Promise<void> {
+      if (cancelled) return;
+      try {
+        const status = await signer.signedFetch("/api/device/status");
+        if (cancelled) return;
+        if (status.ok) {
+          approved();
+          return;
+        }
+        if (status.status === 403) {
+          throw new Error("This kiosk has been disabled. Contact an administrator.");
+        }
+        if (status.status === 401) {
+          const rejection = await status.json().catch(() => null) as { code?: string } | null;
+          if (rejection?.code !== "DEVICE_UNTRUSTED") {
+            setPairingCode(null);
+            setMessage("Kiosk device signature verification failed. Contact an administrator.");
+            setDeviceTrust("error");
+            setState("error");
+            return;
+          }
+        }
+
+        // If the ten-minute pairing window expires, replace the displayed
+        // code with a new signed request. No browser request approves itself.
+        if (Date.now() >= Date.parse(expiresAt)) {
+          const next = await signer.beginPairing();
+          if (cancelled) return;
+          setPairingCode(next.code);
+          expiresAt = next.expiresAt;
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof Error && error.message.includes("disabled")) {
+          setPairingCode(null);
+          setMessage(error.message);
+          setDeviceTrust("error");
+          setState("error");
+          return;
+        }
+        // Transient network failure: preserve current pairing code, retry.
+      }
+
+      if (!cancelled) {
+        approvalTimer = window.setTimeout(
+          () => { void waitForApproval(signer, expiresAt); },
+          5000,
+        );
+      }
+    }
+
+    async function start() {
+      try {
+        const signer = await createBrowserKioskDeviceSigner();
+        if (cancelled) return;
+        deviceSignerRef.current = signer;
+
+        const status = await signer.signedFetch("/api/device/status");
+        if (cancelled) return;
+        if (status.ok) {
+          approved();
+          return;
+        }
+        if (status.status !== 401) {
+          throw new Error("Kiosk device registration is unavailable or has been disabled.");
+        }
+
+        const rejection = await status.json() as { code?: string };
+        if (rejection.code !== "DEVICE_UNTRUSTED") {
+          throw new Error("This kiosk device identity could not be verified.");
+        }
+
+        const pairing = await signer.beginPairing();
+        if (cancelled) return;
+        setPairingCode(pairing.code);
+        setDeviceTrust("pairing");
+        approvalTimer = window.setTimeout(
+          () => { void waitForApproval(signer, pairing.expiresAt); },
+          5000,
+        );
+      } catch (error) {
+        if (cancelled) return;
+        setPairingCode(null);
+        setDeviceTrust("error");
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Kiosk device authentication is unavailable.",
+        );
+        setState("error");
+      }
+    }
+
+    void start();
+    return () => {
+      cancelled = true;
+      if (approvalTimer !== null) window.clearTimeout(approvalTimer);
+      deviceSignerRef.current = null;
+    };
+  }, [showPrototypeTools]);
 
   function reset() {
     const signer = deviceSignerRef.current;
@@ -679,27 +817,22 @@ export function KioskAuthDemo() {
             <h1>{state === "reading" ? "Checking your card…" : "Tap your card to sign in"}</h1>
             <p className="lead">Use your CSS customer card for fast access to your account and trade pricing.</p>
 
-            <div className={`nfc-target${state === "reading" ? " is-reading" : ""}`} role="status">
-              <span className="nfc-icon"><ContactlessIcon /></span>
-              <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
-            </div>
+            {deviceTrust === "pairing" && pairingCode ? (
+              <div className="kiosk-pairing" role="status">
+                <p className="eyebrow">One-time kiosk setup</p>
+                <strong className="kiosk-pairing-code">{pairingCode}</strong>
+                <p>Read this code to your CSS administrator. Once approved, tap your card to sign in.</p>
+              </div>
+            ) : (
+              <div className={`nfc-target${state === "reading" ? " is-reading" : ""}`} role="status">
+                <span className="nfc-icon"><ContactlessIcon /></span>
+                <span className="nfc-label">{state === "reading" ? "Card detected" : "Hold card near the reader"}</span>
+              </div>
+            )}
 
             <p className="privacy-note">
               The kiosk automatically signs out after {KIOSK_INACTIVITY_TIMEOUT_SECONDS} seconds of inactivity.
             </p>
-            {state === "idle" ? (
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => {
-                  setMessage(null);
-                  setFormError(null);
-                  setState("employee-enrollment-code");
-                }}
-              >
-                Employee RFID enrollment
-              </button>
-            ) : null}
           </section>
         ) : null}
 
@@ -892,7 +1025,19 @@ export function KioskAuthDemo() {
             <p className="eyebrow">Unable to continue</p>
             <h1>We couldn’t sign you in</h1>
             <p className="lead">{message}</p>
-            <button className="primary-button" type="button" onClick={reset}>Return to card screen</button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                if (!showPrototypeTools && deviceTrust === "error") {
+                  window.location.reload();
+                } else {
+                  reset();
+                }
+              }}
+            >
+              {!showPrototypeTools && deviceTrust === "error" ? "Retry kiosk connection" : "Return to card screen"}
+            </button>
           </section>
         ) : null}
       </main>

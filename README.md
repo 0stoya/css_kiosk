@@ -152,6 +152,7 @@ See:
 - `docs/MAGENTO_KIOSK_SESSION.md` — GraphQL customer-session exchange
 - `docs/KIOSK_CATEGORIES.md` — kiosk category merchandising and image setup
 - `docs/PROGRESS.md` — accepted milestones and current handoff state
+- `docs/PRODUCTION_DEVICE_PAIRING.md` — temporary production WebView key pairing and Ubuntu approval
 
 ## Local development
 

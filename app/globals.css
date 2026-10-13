@@ -265,6 +265,34 @@ h1 {
 .error-badge { background: #fff0ef; color: var(--css-danger); }
 .demo-message { margin: 0; color: var(--css-muted); font-size: 19px; }
 
+.kiosk-pairing {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  width: min(100%, 600px);
+  padding: 32px 24px;
+  border: 2px solid #b8d3e8;
+  border-radius: 18px;
+  background: #f4f9fd;
+}
+
+.kiosk-pairing-code {
+  display: block;
+  font-family: var(--font-secondary);
+  font-size: clamp(22px, 4vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  color: var(--css-primary);
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.kiosk-pairing p {
+  margin: 0;
+  max-width: 500px;
+  line-height: 1.5;
+}
+
 .prototype-tools {
   position: fixed;
   left: max(18px, env(safe-area-inset-left));
