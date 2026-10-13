@@ -15,7 +15,7 @@ signing when the APK can be updated.
 - No card UID, Magento password, customer bearer token, or device private key is
   written to the pairing database or exposed in the pairing code.
 - Public POST /api/device/pairing records only a **pending** public key and
-  a salted-by-domain hashed, ten-character random pairing code. The request
+  a domain-separated SHA-256 hash of a ten-character random pairing code. The request
   must be signed by the candidate browser key. Replay nonces and rate limits
   apply before a pending request is accepted.
 - **Only the local Ubuntu CLI** can move a pending public key into the trusted
