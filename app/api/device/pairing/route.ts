@@ -92,6 +92,7 @@ export async function POST(request: Request) {
       publicJwk: JSON.stringify(publicJwk),
       // Nginx sets X-Real-IP from the peer. Used for abuse limits, NOT authorization.
       sourceAddress: request.headers.get("x-real-ip")?.trim().slice(0, 128) || "unknown",
+      nonce: request.headers.get("x-css-kiosk-nonce")?.trim() || "",
     });
 
     return NextResponse.json(
