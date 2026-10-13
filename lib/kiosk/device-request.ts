@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import {
   consumeKioskDeviceNonce,
+  consumeKioskPairingNonce,
   getKioskDevice,
   markKioskDeviceSeen,
   type KioskDevice,
@@ -164,4 +165,65 @@ export async function readTrustedJsonRequest<T>(request: Request) {
 export async function verifyTrustedRequest(request: Request) {
   const rawBody = await request.text();
   return verifyKioskDeviceRequest(request, rawBody);
+}
+
+/**
+ * Validate possession of an unregistered browser key before creating a pending
+ * pairing code. This NEVER makes the key trusted for normal kiosk API requests.
+ */
+export function verifyKioskPairingProof(
+  request: Request,
+  rawBody: string,
+  publicJwk: JsonWebKey,
+  expectedDeviceId: string,
+) {
+  const deviceId = request.headers.get("x-css-kiosk-device-id")?.trim() || "";
+  const timestamp = request.headers.get("x-css-kiosk-timestamp")?.trim() || "";
+  const nonce = request.headers.get("x-css-kiosk-nonce")?.trim() || "";
+  const signature = request.headers.get("x-css-kiosk-signature")?.trim() || "";
+
+  if (
+    deviceId !== expectedDeviceId ||
+    !/^browser-[a-f0-9]{24}$/.test(deviceId) ||
+    !/^\\d{12,15}$/.test(timestamp) ||
+    Math.abs(Date.now() - Number(timestamp)) > REQUEST_WINDOW_MS ||
+    !/^[A-Za-z0-9_-]{16,128}$/.test(nonce) ||
+    !/^[A-Za-z0-9_-]{80,100}$/.test(signature)
+  ) {
+    throw new KioskDeviceRequestError(
+      "Invalid kiosk device pairing proof.",
+      "DEVICE_SIGNATURE_INVALID",
+      401,
+    );
+  }
+
+  let verified = false;
+  try {
+    const key = createPublicKey({ key: publicJwk, format: "jwk" });
+    const bytes = Buffer.from(signature, "base64url");
+    verified = bytes.length === 64 && verify(
+      "sha256",
+      Buffer.from(canonicalRequest(request, timestamp, nonce, rawBody)),
+      { key, dsaEncoding: "ieee-p1363" },
+      bytes,
+    );
+  } catch {
+    verified = false;
+  }
+
+  if (!verified) {
+    throw new KioskDeviceRequestError(
+      "Invalid kiosk device pairing signature.",
+      "DEVICE_SIGNATURE_INVALID",
+      401,
+    );
+  }
+
+  if (!consumeKioskPairingNonce(deviceId, nonce)) {
+    throw new KioskDeviceRequestError(
+      "This kiosk pairing request has already been used.",
+      "DEVICE_REPLAY",
+      409,
+    );
+  }
 }
