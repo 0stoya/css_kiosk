@@ -42,6 +42,12 @@ From an isolated Git worktree, use Node 24:
     yarn typecheck
     yarn test:pairing
     yarn build
+    yarn test:pairing:http
+
+The HTTP test launches a separate production-mode Next.js instance on a random
+127.0.0.1 port with a throwaway SQLite database. It checks signed pairing,
+operator approval and an unknown-card NFC request without using Magento,
+the real Kiosk database or PM2.
 
 Back up the existing SQLite kiosk DB safely before deployment. Verify the
 configured KIOSK_DB_PATH points to the same **existing database** in production
